@@ -41,6 +41,9 @@ _NOT_PLACE = {
     "Det", "Dei", "Vi", "Her", "Der", "Ingen", "Om", "Ca", "Min", "Hovudmassa",
     "Storparten", "Resten", "Ellers", "Elles", "Same", "Framleis", "Truleg",
     "Stor", "Mange", "Mindre", "Store", "Små", "Ein", "Også",
+    # not place names: "scattered", "from", directions used as sentence openers
+    "Spredt", "Spredte", "Spreidd", "Spreidde", "Frå", "Fra", "Nord", "Sør",
+    "Aust", "Vest", "Nordaust", "Nordvest", "Søraust", "Sørvest",
     # område / region names — not pinpoint landmarks
     "Reinheimen", "Breheimen", "Reinheimen-Breheimen",
 }
