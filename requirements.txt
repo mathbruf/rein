@@ -12,15 +12,17 @@ shapely
 # that needs it begins, to avoid early binary-install pain (especially on
 # Windows).
 #
-# Phase 3 (terrain layers, historical weather, scoring/calibration):
+# Phase 1 (terrain layers + rule-based scoring engine):
 #   geopandas        # vector layers in EPSG:25832
 #   rasterio         # read/write DEM and raster grids
 #   xarray           # gridded / multi-dim arrays
 #   rioxarray        # raster <-> xarray bridge
-#   scikit-learn     # calibration / presence-background modeling
-#   xgboost          # later RSF-style model (optional)
 #
-# Phase 4 (rendering the daily map):
+# Phase 2 (rendering the daily live forecast map):
 #   matplotlib       # static heatmap rendering
 #   folium           # interactive web map (optional)
+#
+# Phase 3 (sightings harvest + validation):
+#   scikit-learn     # validation metrics / presence-background comparison
+#   xgboost          # optional RSF-style model, only if validation motivates it
 # ---------------------------------------------------------------------------
