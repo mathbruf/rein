@@ -1,0 +1,26 @@
+# Phase-1 dependencies (keep it light).
+requests
+beautifulsoup4
+lxml
+pandas
+python-dateutil
+pyproj
+shapely
+
+# ---------------------------------------------------------------------------
+# Deferred dependencies — DO NOT install yet. Add each only when the phase
+# that needs it begins, to avoid early binary-install pain (especially on
+# Windows).
+#
+# Phase 3 (terrain layers, historical weather, scoring/calibration):
+#   geopandas        # vector layers in EPSG:25832
+#   rasterio         # read/write DEM and raster grids
+#   xarray           # gridded / multi-dim arrays
+#   rioxarray        # raster <-> xarray bridge
+#   scikit-learn     # calibration / presence-background modeling
+#   xgboost          # later RSF-style model (optional)
+#
+# Phase 4 (rendering the daily map):
+#   matplotlib       # static heatmap rendering
+#   folium           # interactive web map (optional)
+# ---------------------------------------------------------------------------

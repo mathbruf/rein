@@ -1,0 +1,38 @@
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Secrets / credentials (Frost client ID, etc.)
+.env
+*.env
+secrets.*
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Data artifacts — keep folder structure (.gitkeep) but ignore contents
+data/raw/*
+data/interim/*
+data/processed/*
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+# Note: data/gazetteer/ is a reviewed, version-controlled artifact — not ignored.
