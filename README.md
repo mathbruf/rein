@@ -39,3 +39,6 @@ pip install -r requirements.txt
 ## Status
 Phase 0 (scaffold) complete. Currently entering **Phase 1 — harvest & structure presence
 data** from `villreinutvalet.no/jaktinfo`. See `PROGRESS.md` for the exact next action.
+
+## Last session
+This is the last claude-code session: claude --resume 4ba2afce-adc5-4f3a-a435-c6ff4fb59d8c
