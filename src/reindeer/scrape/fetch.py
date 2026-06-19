@@ -14,10 +14,7 @@ from bs4 import BeautifulSoup
 
 BASE = "https://www.villreinutvalet.no"
 INDEX = f"{BASE}/jaktinfo"
-USER_AGENT = (
-    "reindeer-heatmap/0.1 (personal hunting research; "
-    "contact mathbruf@hotmail.com)"
-)
+USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research)"
 DEFAULT_DELAY = 1.5  # seconds between requests — be gentle
 
 # Repo-root-relative cache locations.

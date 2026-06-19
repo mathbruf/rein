@@ -19,7 +19,7 @@ from pathlib import Path
 import requests
 
 API = "https://api.kartverket.no/stedsnavn/v1/navn"
-USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research; mathbruf@hotmail.com)"
+USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research)"
 OUT_EPSG = 25832
 
 # Lordalen valley representation point (SSR), our regional anchor in EPSG:25832.
