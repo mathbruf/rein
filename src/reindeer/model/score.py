@@ -21,11 +21,13 @@ Behavioral logic (CLAUDE.md §1), encoded as two competing weather-gated regimes
      negative TPI (valleys/hollows). Per the hunter, weather/shelter dominates the
      day-to-day movement more than insects do (W_SHELTER > W_INSECT).
 
+  FORAGE: NIBIO AR50 land cover -> a per-cell destination value (open alpine ground
+     and mire score high; forest lower; water/glacier/built ~0). Additive (W_FORAGE).
+
   TRAVEL-LIMIT penalty: very steep/cliffed cells are down-weighted (hard to use).
 
-  FORAGE and DISTURBANCE are part of the intended model but their layers are not
-  built yet (AR5 forage, N50/OSM roads-trails-cabins). Their weights are reserved
-  at 0.0 here and wired in when the layers land — see W_FORAGE / W_DISTURB.
+  DISTURBANCE penalty: cells near roads/trails/cabins are discounted (W_DISTURB),
+     fading with distance — "they come lower only if hunters allow".
 
 The two regimes are gated by weather "pressures" in [0,1], so a warm calm day makes
 the high ground light up and a cold windy day flips the surface to the valleys — the
@@ -44,6 +46,7 @@ ELEV_HI_M = 1900.0    # ~high open fjell             -> elev_norm 1
 TPI_SCALE_M = 60.0    # TPI mapped from [-60,+60] m onto [0,1]; >0 = exposed high
 SLOPE_STEEP_LO = 30.0  # slope (deg) where the travel penalty starts
 SLOPE_STEEP_HI = 45.0  # slope (deg) at/above which the penalty is full
+DISTURB_DECAY_M = 2500.0  # disturbance penalty fades from full (at a feature) to 0 by this distance
 
 # --- weather -> pressure ramps ---------------------------------------------------
 # Insect activity climbs with warmth and is suppressed by wind.
@@ -64,8 +67,8 @@ W_SHELTER = 1.0    # weight of the shelter (go-low) regime
 W_STEEP = 0.5      # strength of the steep-terrain travel penalty (0..1 multiplier)
 W_BASELINE = 0.3   # gentle always-on pull to high ground [hunter: "mostly 1300 m+"]; weather and
                    #   (later) disturbance override it - "lower if wind and hunters allow"
-W_FORAGE = 0.0     # RESERVED: enable when AR5 forage layer exists
-W_DISTURB = 0.0    # RESERVED: enable when roads/trails/cabins distance layer exists
+W_DISTURB = 0.6    # disturbance penalty strength [hunter: "lower only if hunters allow"]
+W_FORAGE = 0.4     # additive forage destination value (NIBIO AR50 land cover)
 
 # within-regime terrain mix (how much elevation vs exposure each regime cares about)
 REFUGE_ELEV_W, REFUGE_TPI_W = 0.6, 0.4   # insect/thermal: high + exposed
@@ -109,8 +112,13 @@ def _terrain_norm(elev, tpi):
     return elev_n, tpi_n
 
 
-def score_cells(elev, slope, tpi, w: WeatherDay) -> dict[str, np.ndarray]:
+def score_cells(elev, slope, tpi, w: WeatherDay,
+                disturb_dist=None, forage=None) -> dict[str, np.ndarray]:
     """Score arrays of per-cell terrain attributes for one weather day.
+
+    disturb_dist: optional per-cell distance (m) to nearest disturbance feature;
+    when given (and W_DISTURB>0) cells near roads/trails/cabins are penalised.
+    forage: optional per-cell forage value 0..1 (AR50); added when W_FORAGE>0.
 
     Returns raw score plus the regime pressures used (for explanation) and a
     0..1 normalised score (min-max over the scored cells) for the heatmap.
@@ -130,9 +138,14 @@ def score_cells(elev, slope, tpi, w: WeatherDay) -> dict[str, np.ndarray]:
     base = ((W_BASELINE * baseline)
             + (W_INSECT * p_ins * refuge)
             + (W_SHELTER * p_shl * shelter))
-    # forage / disturbance reserved (weights 0 until layers exist)
+    if forage is not None and W_FORAGE > 0:
+        base = base + W_FORAGE * np.asarray(forage, float)  # forage destination value
     steep = _ramp(slope, SLOPE_STEEP_LO, SLOPE_STEEP_HI)
     raw = base * (1.0 - W_STEEP * steep)
+    if disturb_dist is not None and W_DISTURB > 0:
+        # near a road/trail/cabin -> penalty 1, fading to 0 by DISTURB_DECAY_M
+        disturb_pen = _ramp(np.asarray(disturb_dist, float), DISTURB_DECAY_M, 0.0)
+        raw = raw * (1.0 - W_DISTURB * disturb_pen)
 
     lo, hi = np.nanmin(raw), np.nanmax(raw)
     norm = (raw - lo) / (hi - lo) if hi > lo else np.zeros_like(raw)

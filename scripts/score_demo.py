@@ -34,13 +34,24 @@ def main() -> None:
     grid = pd.read_csv(PROCESSED / "grid_250m.csv")
     terr = pd.read_csv(PROCESSED / "terrain_250m.csv")
     df = terr.merge(grid[["cell_id", "in_lordalen"]], on="cell_id")
+    dist_path = PROCESSED / "disturbance_250m.csv"
+    if dist_path.exists():
+        df = df.merge(pd.read_csv(dist_path)[["cell_id", "dist_disturb_m"]], on="cell_id")
+    forage_path = PROCESSED / "forage_250m.csv"
+    if forage_path.exists():
+        df = df.merge(pd.read_csv(forage_path)[["cell_id", "forage"]], on="cell_id")
     field = df[df["in_lordalen"] == 1].copy()   # reported surface = Lordalen field
-    print(f"Scoring {len(field)} Lordalen cells\n")
+    disturb = field["dist_disturb_m"] if "dist_disturb_m" in field else None
+    forage = field["forage"] if "forage" in field else None
+    layers = [n for n, v in (("disturbance", disturb), ("forage", forage)) if v is not None]
+    print(f"Scoring {len(field)} Lordalen cells (layers: {', '.join(layers) or 'terrain only'})\n")
 
     for name, w in SCENARIOS.items():
         res = score_cells(field["elevation_m"], field["slope_deg"],
-                          field["tpi_m"], w)
+                          field["tpi_m"], w, disturb_dist=disturb, forage=forage)
         out = field[["cell_id", "east", "north", "elevation_m", "tpi_m"]].copy()
+        if disturb is not None:
+            out["dist_disturb_m"] = disturb.to_numpy()
         out["score"] = res["score"]
         out.to_csv(PROCESSED / f"score_{name}.csv", index=False, encoding="utf-8")
 
@@ -48,10 +59,10 @@ def main() -> None:
         print(f"[{name}]  temp={w.temp_c}C wind={w.wind_ms}m/s precip={w.precip_mm}mm")
         print(f"   insect_pressure={res['insect_pressure'][0]:.2f}  "
               f"shelter_pressure={res['shelter_pressure'][0]:.2f}")
+        dtxt = (f"  mean dist-to-disturb={top.dist_disturb_m.mean():.0f} m "
+                f"(field {out.dist_disturb_m.mean():.0f})") if disturb is not None else ""
         print(f"   top-20% cells: mean elev={top.elevation_m.mean():6.0f} m  "
-              f"mean TPI={top.tpi_m.mean():+5.0f} m   "
-              f"(field mean elev={out.elevation_m.mean():.0f}, "
-              f"TPI={out.tpi_m.mean():+.0f})")
+              f"mean TPI={top.tpi_m.mean():+5.0f} m{dtxt}")
         print(f"   -> data/processed/score_{name}.csv\n")
 
 
