@@ -36,9 +36,26 @@ pip install -r requirements.txt
 - **`PROGRESS.md`** — onboarding + running work log; read this to see the current phase and next action.
 - **`IDEAS.md`** — backlog of proposed improvements (the human promotes these to the roadmap).
 
+## Pipeline (run from the repo root, venv active)
+```bash
+python scripts/harvest_jaktinfo.py   # Phase 1: scrape + parse sightings (validation data)
+python scripts/build_gazetteer.py    # Phase 2: landmark names -> coordinates (SSR)
+python scripts/build_grid.py         # Phase 3: 250 m grid clipped to the field
+python scripts/build_terrain.py      # Phase 3: DTM -> elevation/slope/ruggedness/TPI
+python scripts/build_disturbance.py  # Phase 3: distance to roads/trails/cabins (OSM + KML)
+python scripts/build_forage.py       # Phase 3: forage value from NIBIO AR50 land cover
+python scripts/score_demo.py         # Phase 3: score sample forecasts (sanity demo)
+python scripts/daily_map.py          # Phase 4: tomorrow's live forecast -> scored top-zones
+```
+Outputs land in `data/processed/*.csv` (EPSG:25832; import into QGIS as delimited text).
+
 ## Status
-Phase 0 (scaffold) complete. Currently entering **Phase 1 — harvest & structure presence
-data** from `villreinutvalet.no/jaktinfo`. See `PROGRESS.md` for the exact next action.
+Phases 0–3 complete: the rule-based scorer turns a forecast + the static layers
+(terrain, disturbance, forage) into a 0–1 grid over the field, with weights tuned to the
+hunter's field experience. **Phase 4 in progress** — `daily_map.py` produces tomorrow's
+scored grid + ranked top-zones from a live MET forecast; heatmap rendering is the remaining
+Phase-4 piece. Phase 5 (validation against harvested sightings) needs a free MET Frost key.
+See `PROGRESS.md` for the exact next action.
 
 ## Last session
 This is the last claude-code session: claude --resume 4ba2afce-adc5-4f3a-a435-c6ff4fb59d8c
