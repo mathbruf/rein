@@ -11,6 +11,9 @@ shapely
 numpy            # array maths for terrain derivatives + scoring
 rasterio         # read the Kartverket DTM GeoTIFF (wheel bundles GDAL)
 
+# Phase-4 dependencies (rendering the daily map) — INSTALLED 2026-06-19.
+matplotlib       # static heatmap PNG rendering
+
 # ---------------------------------------------------------------------------
 # Deferred dependencies — DO NOT install yet. Add each only when the phase
 # that needs it begins, to avoid early binary-install pain (especially on

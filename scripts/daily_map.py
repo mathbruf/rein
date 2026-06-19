@@ -20,6 +20,7 @@ from pyproj import Transformer  # noqa: E402
 
 from reindeer.weather.forecast import fetch_forecast, next_day_weather  # noqa: E402
 from reindeer.model.score import score_cells  # noqa: E402
+from reindeer.viz.render import render_heatmap  # noqa: E402
 
 PROCESSED = _ROOT / "data" / "processed"
 _to_wgs = Transformer.from_crs(25832, 4326, always_xy=True)
@@ -59,13 +60,20 @@ def main() -> None:
     cols = ["cell_id", "east", "north", "elevation_m", "tpi_m", "score"]
     field[cols].to_csv(out, index=False, encoding="utf-8")
 
-    print(f"\nTop 12 zones for {date} (lat/lon for the field notebook):")
     top = field.nlargest(12, "score")
+    png = render_heatmap(
+        field["east"], field["north"], field["score"],
+        PROCESSED / "maps" / f"live_{date}.png",
+        title=f"Lordalen presence - {date} ({w.temp_c}C {w.wind_ms}m/s {w.precip_mm}mm)",
+        top=(top["east"].to_numpy(), top["north"].to_numpy()))
+
+    print(f"\nTop 12 zones for {date} (lat/lon for the field notebook):")
     for _, r in top.iterrows():
         plon, plat = _to_wgs.transform(r["east"], r["north"])
         print(f"  score {r['score']:.2f}  {plat:.4f}N {plon:.4f}E  "
               f"elev {r['elevation_m']:.0f} m  TPI {r['tpi_m']:+.0f}")
-    print(f"\n-> {out}  (import into QGIS: X=east, Y=north, CRS EPSG:25832)")
+    print(f"\n-> {out}  (QGIS: X=east, Y=north, CRS EPSG:25832)")
+    print(f"-> {png}")
 
 
 if __name__ == "__main__":
