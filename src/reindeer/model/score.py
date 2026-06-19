@@ -8,13 +8,18 @@ here; they are kept for Phase-5 validation only.
 
 Behavioral logic (CLAUDE.md §1), encoded as two competing weather-gated regimes:
 
-  INSECT / THERMAL regime  (warm + calm days, the dominant early-season driver):
+  BASELINE: a gentle always-on preference for high ground (hunter: "mostly 1300 m+"),
+     which the two weather regimes (and later, hunting disturbance) pull them off.
+
+  INSECT / THERMAL regime  (warm + calm + DRY days):
      mosquitoes / warble & bot flies push reindeer UPHILL to wind-exposed, cool
      ground -> favor high elevation + positive TPI (ridges/summits/exposed).
+     Rain grounds the flies, so this drive switches off when it rains.
 
   SHELTER regime  (cold OR wet OR very windy days):
      animals seek shelter and graze lower / leeward -> favor lower elevation +
-     negative TPI (valleys/hollows).
+     negative TPI (valleys/hollows). Per the hunter, weather/shelter dominates the
+     day-to-day movement more than insects do (W_SHELTER > W_INSECT).
 
   TRAVEL-LIMIT penalty: very steep/cliffed cells are down-weighted (hard to use).
 
@@ -34,25 +39,31 @@ import numpy as np
 
 # --- terrain normalisation anchors (fixed, so scores are reproducible & comparable
 #     across days rather than relative to whatever cells were loaded) ---------------
-ELEV_LO_M = 600.0     # ~valley floor of the field -> elev_norm 0
-ELEV_HI_M = 1900.0    # ~high open fjell           -> elev_norm 1
+ELEV_LO_M = 1000.0    # below here all ~equally "low" -> elev_norm 0  [hunter: mostly 1300 m+]
+ELEV_HI_M = 1900.0    # ~high open fjell             -> elev_norm 1
 TPI_SCALE_M = 60.0    # TPI mapped from [-60,+60] m onto [0,1]; >0 = exposed high
 SLOPE_STEEP_LO = 30.0  # slope (deg) where the travel penalty starts
 SLOPE_STEEP_HI = 45.0  # slope (deg) at/above which the penalty is full
 
 # --- weather -> pressure ramps ---------------------------------------------------
 # Insect activity climbs with warmth and is suppressed by wind.
-INSECT_T_LO, INSECT_T_HI = 10.0, 18.0   # degC: <10 ~no insects, >18 ~full pressure
-INSECT_W_CALM, INSECT_W_BREEZY = 2.0, 8.0  # m/s: <=2 calm(full), >=8 breezy(none)
+INSECT_T_LO, INSECT_T_HI = 10.0, 18.0   # degC: <10 ~no insects, >18 ~full pressure.
+                                        # ASSUMPTION (hunter unsure 2026-06-19) - test in validation.
+INSECT_W_CALM, INSECT_W_BREEZY = 2.0, 5.0  # m/s: full bug pressure when calm (<=2), gone by a
+                                           # light breeze (~5) [hunter, 2026-06-19]
+INSECT_RAIN_OFF_MM = 2.0  # rain grounds the flies: bug drive ~0 by ~2 mm/day [hunter: no bugs in rain]
 # Shelter drivers.
-COLD_T_HI, COLD_T_LO = 8.0, 0.0    # degC: >=8 ~no cold drive, <=0 ~full
-WET_MM_FULL = 5.0                  # mm/day giving full "wet" drive
+COLD_T_HI, COLD_T_LO = 8.0, 0.0    # degC: >=8 ~no cold drive, <=0 ~full. ASSUMPTION (hunter no info)
+WET_MM_FULL = 5.0                  # mm/day giving full "wet" drive.     ASSUMPTION (hunter no info)
 WIND_HI_LO, WIND_HI_HI = 8.0, 15.0  # m/s: strong-wind shelter drive ramp
 
 # --- regime / term weights (expert-set; tune these) ------------------------------
-W_INSECT = 1.0     # weight of the insect/thermal (go-high) regime
-W_SHELTER = 0.8    # weight of the shelter (go-low) regime
+# Hunter 2026-06-19: weather/shelter dominates day-to-day over insects -> shelter > insect.
+W_INSECT = 0.7     # weight of the insect/thermal (go-high) regime
+W_SHELTER = 1.0    # weight of the shelter (go-low) regime
 W_STEEP = 0.5      # strength of the steep-terrain travel penalty (0..1 multiplier)
+W_BASELINE = 0.3   # gentle always-on pull to high ground [hunter: "mostly 1300 m+"]; weather and
+                   #   (later) disturbance override it - "lower if wind and hunters allow"
 W_FORAGE = 0.0     # RESERVED: enable when AR5 forage layer exists
 W_DISTURB = 0.0    # RESERVED: enable when roads/trails/cabins distance layer exists
 
@@ -80,7 +91,8 @@ def _ramp(x, lo, hi):
 def insect_pressure(w: WeatherDay) -> float:
     warm = float(_ramp(w.temp_c, INSECT_T_LO, INSECT_T_HI))
     calm = float(_ramp(w.wind_ms, INSECT_W_BREEZY, INSECT_W_CALM))  # descending
-    return warm * calm
+    dry = 1.0 - float(_ramp(w.precip_mm, 0.0, INSECT_RAIN_OFF_MM))  # rain grounds the flies
+    return warm * calm * dry
 
 
 def shelter_pressure(w: WeatherDay) -> float:
@@ -114,7 +126,10 @@ def score_cells(elev, slope, tpi, w: WeatherDay) -> dict[str, np.ndarray]:
     p_ins = insect_pressure(w)
     p_shl = shelter_pressure(w)
 
-    base = (W_INSECT * p_ins * refuge) + (W_SHELTER * p_shl * shelter)
+    baseline = elev_n   # default home-range preference: high ground (hunter: "mostly 1300 m+")
+    base = ((W_BASELINE * baseline)
+            + (W_INSECT * p_ins * refuge)
+            + (W_SHELTER * p_shl * shelter))
     # forage / disturbance reserved (weights 0 until layers exist)
     steep = _ramp(slope, SLOPE_STEEP_LO, SLOPE_STEEP_HI)
     raw = base * (1.0 - W_STEEP * steep)

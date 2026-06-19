@@ -24,6 +24,9 @@ PROCESSED = _ROOT / "data" / "processed"
 SCENARIOS = {
     "warm_calm": WeatherDay(temp_c=19.0, wind_ms=2.0, precip_mm=0.0),
     "cold_windy": WeatherDay(temp_c=1.0, wind_ms=12.0, precip_mm=6.0),
+    # warm + calm + light drizzle: both regimes partly active -> shows the regime balance
+    # (heavier rain would switch the insect drive fully off)
+    "warm_drizzle": WeatherDay(temp_c=15.0, wind_ms=2.0, precip_mm=1.0),
 }
 
 
