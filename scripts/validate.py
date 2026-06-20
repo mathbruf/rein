@@ -142,6 +142,9 @@ def main() -> None:
     auc = float(pct.mean())
     f20, lift20 = V.top_quantile_lift(pct, 0.20)
     f10, lift10 = V.top_quantile_lift(pct, 0.10)
+    # precision / hit-rate = % of actual sightings the model placed on favored ground
+    hit_half = float((pct >= 0.50).mean())   # in the model's favored half (chance 50%)
+    hit_top3 = float((pct >= 0.6667).mean())  # in the model's top third (chance 33%)
     boyce = V.continuous_boyce(pct_to_scores := np.array([per_date_score[r["date"]][r["cell_idx"]]
                                                           for _, r in used.iterrows()]),
                                np.concatenate(obs_bg))
@@ -186,10 +189,25 @@ def main() -> None:
         "- **Weather:** ERA5 daytime (06–18) at the field centroid via the Open-Meteo "
         "archive (free; stands in for MET Frost, which needs a client ID).",
         "",
-        "## Headline result (direction-aware, 3 km offset)",
-        f"- **Date-matched AUC (mean percentile): {auc:.3f}** (0.5 = chance) — the shipped "
-        "scorer ranks reported sightings *below* chance; it is **anti-correlated** with "
-        "where reindeer were reported in the hunting season.",
+        "## Model precision vs actual readings (the headline metric)",
+        "Of the actual sightings, what fraction did the model place on its favored ground "
+        "(scoring each reading's location within that day's field on the weather+bug+landscape "
+        "rules only — the readings are never an input)?",
+        "",
+        f"- **{hit_half*100:.0f}% of readings fell in the model's favored half** "
+        "(chance = 50%).",
+        f"- **{hit_top3*100:.0f}% in the model's top third** (chance = 33%).",
+        f"- **{f20*100:.0f}% in the model's top 20%** (chance = 20%; {lift20:.2f}× chance), "
+        f"**{f10*100:.0f}% in the top 10%** (chance = 10%; {lift10:.2f}×).",
+        "",
+        "These hit-rates are **below chance**, so the current weather+bug+landscape weights "
+        "are **anti-correlated** with where reindeer were actually reported in the hunting "
+        "season — the model is honestly wrong for autumn, not yet right. (The readings are "
+        "used only to measure this; they were not used to build or tune the model.)",
+        "",
+        "## Supporting statistics (direction-aware, 3 km offset)",
+        f"- **Date-matched AUC (mean percentile): {auc:.3f}** (0.5 = chance) — equivalent "
+        "rank view of the same result.",
         f"- **Top-20% lift: {f20*100:.0f}%** of sightings in the top 20% of cells "
         f"→ {lift20:.2f}× chance.  **Top-10% lift: {f10*100:.0f}%** → {lift10:.2f}×.",
         f"- **Continuous Boyce (pooled): {boyce:+.3f}** (+1 good, 0 random).",
