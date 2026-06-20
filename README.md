@@ -46,17 +46,26 @@ python scripts/build_disturbance.py  # Phase 3: distance to roads/trails/cabins 
 python scripts/build_forage.py       # Phase 3: forage value from NIBIO AR50 land cover
 python scripts/score_demo.py         # Phase 3: score sample forecasts (sanity demo)
 python scripts/daily_map.py          # Phase 4: tomorrow's live forecast -> scored top-zones
+python scripts/render_map.py         # Phase 4: render scored CSVs to heatmap PNGs
+python scripts/validate.py           # Phase 5: test the scorer vs held-out sightings
 ```
-Outputs land in `data/processed/*.csv` (EPSG:25832; import into QGIS as delimited text).
+Outputs land in `data/processed/*.csv` (EPSG:25832; import into QGIS as delimited text);
+maps in `data/processed/maps/`; the validation write-up in `docs/validation_report.md`.
 
 ## Status
-Phases 0–4 complete. The rule-based scorer turns a forecast + the static layers
-(terrain, disturbance, forage) into a 0–1 grid over the field, with weights tuned to the
-hunter's field experience. **`python scripts/daily_map.py`** fetches tomorrow's live MET
-forecast and produces, in one command: a scored grid CSV, a heatmap PNG with the top zones
-marked (`data/processed/maps/`), and a ranked top-zone list with a per-zone reason and the
-nearest named landmark. **Next: Phase 5** — validate the scorer against the harvested
-sightings; this needs a free MET Frost client ID (frost.met.no). See `PROGRESS.md`.
+**Full pipeline built (phases 0–5).** `python scripts/daily_map.py` fetches tomorrow's
+live MET forecast and produces, in one command, a scored grid CSV, a heatmap PNG with the
+top zones marked, and a ranked top-zone list with per-zone reasons and nearest landmark.
+
+**Honest validation result (`docs/validation_report.md`):** tested against 52 held-out
+hunting-season sightings, the current scorer ranks them *below* chance (date-matched
+AUC 0.32) — it is **anti-correlated** with where reindeer were reported in autumn.
+Ablation shows the summer high-ground baseline and the disturbance penalty cause this
+(reports are autumn, with insects gone and animals lower, and are effort-biased toward
+accessible terrain). The weights were **not** retuned to the test set; the fix — a
+seasonal (autumn) profile and an effort-aware re-test under cross-validation — is the next
+cycle (IDEAS 008–010). So this is an honest, validated **prototype**, not yet a v1.0.
+See `PROGRESS.md`.
 
 ## Last session
 This is the last claude-code session: claude --resume 4ba2afce-adc5-4f3a-a435-c6ff4fb59d8c
