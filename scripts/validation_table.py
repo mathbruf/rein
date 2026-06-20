@@ -27,7 +27,7 @@ import pandas as pd
 from pyproj import Transformer
 
 from reindeer.geocode.gazetteer import load_gazetteer
-from reindeer.geocode.positions import resolve_position
+from reindeer.geocode.positions import resolve_position, load_manual_pins
 from reindeer.terrain.grid import load_field_polygons, LORDALEN, DALSIDA
 from reindeer.model.score import score_cells
 from reindeer.model.validation import percentile_rank
@@ -47,6 +47,7 @@ def main() -> None:
     g = g.merge(pd.read_csv(PROC / "disturbance_250m.csv")[["cell_id", "dist_disturb_m"]], on="cell_id")
     g = g.merge(pd.read_csv(PROC / "forage_250m.csv")[["cell_id", "forage"]], on="cell_id")
     gaz = load_gazetteer()
+    pins = load_manual_pins()
     polys = load_field_polygons()
     inside = prep(polys[LORDALEN].union(polys[DALSIDA]))
     gx, gy = g.east.to_numpy(), g.north.to_numpy()
@@ -64,7 +65,7 @@ def main() -> None:
     for _, r in obs.iterrows():
         if pd.isna(r["landmark_phrases"]):
             continue
-        pos = resolve_position(r["landmark_phrases"], r["direction_hints"], gaz, 3000.0)
+        pos = resolve_position(r["landmark_phrases"], r["direction_hints"], gaz, 3000.0, pins=pins)
         if pos is None:
             continue
         e, n, method = pos

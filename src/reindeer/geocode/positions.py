@@ -15,10 +15,39 @@ script reports a sensitivity sweep over it to show the result isn't cherry-picke
 """
 from __future__ import annotations
 
+import csv
 import json
 import math
+from pathlib import Path
+
+from pyproj import Transformer
 
 DEFAULT_OFFSET_M = 3000.0
+
+_ROOT = Path(__file__).resolve().parents[3]
+MANUAL_PINS_CSV = _ROOT / "data" / "gazetteer" / "manual_positions.csv"
+_to_utm = Transformer.from_crs(4326, 25832, always_xy=True)
+
+
+def load_manual_pins(path: Path = MANUAL_PINS_CSV) -> dict:
+    """Human-pinned real positions, keyed (landmark.lower(), method) -> (east, north).
+
+    The template has assumed_lat/lon (mine) and real_lat/real_lon (yours, blank until
+    filled). Only rows with both real_lat and real_lon set are used. A method of 'any'
+    matches every method for that landmark.
+    """
+    pins: dict = {}
+    p = Path(path)
+    if not p.exists():
+        return pins
+    with p.open(encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            rlat, rlon = row.get("real_lat", "").strip(), row.get("real_lon", "").strip()
+            if not rlat or not rlon:
+                continue
+            east, north = _to_utm.transform(float(rlon), float(rlat))
+            pins[(row["landmark"].lower(), row.get("method", "any").strip() or "any")] = (east, north)
+    return pins
 
 # compass unit vectors in EPSG:25832 (east, north), keys folded (ø->o, å->a, æ->ae)
 _DIAG = math.sqrt(0.5)
@@ -47,10 +76,13 @@ def _direction(token: str) -> tuple[float, float] | None:
 
 
 def resolve_position(landmark_phrases, direction_hints, gaz,
-                     offset_m: float = DEFAULT_OFFSET_M):
+                     offset_m: float = DEFAULT_OFFSET_M, pins: dict | None = None):
     """Return (east, north, method) for an observation, or None if no anchor resolves.
 
-    method is one of: 'mot', 'offset', 'at-landmark'.
+    method is one of: 'mot', 'offset', 'at-landmark' (suffixed '-pinned' when a manual
+    pin overrode the derived position). If `pins` is given and the anchor landmark has a
+    human-pinned real position (by method or 'any'), that exact position is used instead
+    of the directional heuristic — removing the offset assumption.
     """
     lms = landmark_phrases if isinstance(landmark_phrases, list) else json.loads(landmark_phrases or "[]")
     hints = direction_hints if isinstance(direction_hints, list) else json.loads(direction_hints or "[]")
@@ -60,18 +92,24 @@ def resolve_position(landmark_phrases, direction_hints, gaz,
         return None
     ax, ay = anchor.east, anchor.north
 
-    # 1) "mot Y" — head towards another resolved landmark: take the midpoint
+    # determine the derived method first (so a pin can be keyed by it)
+    method, pos = "at-landmark", (ax, ay)
     for h in hints:
         if _fold(h.get("relation", "")) == "mot":
             tgt = gaz.get(h.get("landmark"))
             if tgt is not None and (tgt.east, tgt.north) != (ax, ay):
-                return (ax + 0.5 * (tgt.east - ax), ay + 0.5 * (tgt.north - ay), "mot")
+                method, pos = "mot", (ax + 0.5 * (tgt.east - ax), ay + 0.5 * (tgt.north - ay))
+                break
+    else:
+        for h in hints:
+            v = _direction(h.get("relation", "")) or _direction(h.get("bearing", ""))
+            if v is not None:
+                method, pos = "offset", (ax + v[0] * offset_m, ay + v[1] * offset_m)
+                break
 
-    # 2) compass offset from a "<dir> for" relation or a "<dir>over" bearing
-    for h in hints:
-        v = _direction(h.get("relation", "")) or _direction(h.get("bearing", ""))
-        if v is not None:
-            return (ax + v[0] * offset_m, ay + v[1] * offset_m, "offset")
-
-    # 3) no usable direction -> at the landmark
-    return (ax, ay, "at-landmark")
+    if pins:
+        key = anchor.name.lower()
+        pin = pins.get((key, method)) or pins.get((key, "any"))
+        if pin is not None:
+            return (pin[0], pin[1], method + "-pinned")
+    return (pos[0], pos[1], method)

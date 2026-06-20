@@ -31,7 +31,7 @@ import pandas as pd  # noqa: E402
 from pyproj import Transformer  # noqa: E402
 
 from reindeer.geocode.gazetteer import load_gazetteer  # noqa: E402
-from reindeer.geocode.positions import resolve_position  # noqa: E402
+from reindeer.geocode.positions import resolve_position, load_manual_pins  # noqa: E402
 from reindeer.terrain.grid import load_field_polygons, LORDALEN, DALSIDA  # noqa: E402
 from reindeer.model.score import score_cells  # noqa: E402
 from reindeer.model import validation as V  # noqa: E402
@@ -55,9 +55,9 @@ def load_grid() -> pd.DataFrame:
     return df
 
 
-def resolve_observations(grid, gaz, inside, offset_m, naive=False) -> pd.DataFrame:
+def resolve_observations(grid, gaz, inside, offset_m, naive=False, pins=None) -> pd.DataFrame:
     """One row per observation resolving to an in-grid cell, using the directional
-    phrase (or the bare landmark when naive=True)."""
+    phrase (or the bare landmark when naive=True), with manual pins applied when given."""
     gx, gy = grid["east"].to_numpy(), grid["north"].to_numpy()
     obs = pd.read_csv(_ROOT / "data" / "interim" / "observations.csv")
     rows = []
@@ -65,7 +65,7 @@ def resolve_observations(grid, gaz, inside, offset_m, naive=False) -> pd.DataFra
         if pd.isna(r["landmark_phrases"]):
             continue
         hints = "[]" if naive else r["direction_hints"]
-        pos = resolve_position(r["landmark_phrases"], hints, gaz, offset_m=offset_m)
+        pos = resolve_position(r["landmark_phrases"], hints, gaz, offset_m=offset_m, pins=pins)
         if pos is None:
             continue
         e, n, method = pos
@@ -116,8 +116,11 @@ def ablation_auc(used, wx, layers, overrides) -> float:
 def main() -> None:
     grid = load_grid()
     gaz = load_gazetteer()
+    pins = load_manual_pins()
     polys = load_field_polygons()
     inside = prep(polys[LORDALEN].union(polys[DALSIDA]))
+    if pins:
+        print(f"using {len(pins)} manual position pin(s)")
 
     # all candidate dates (naive set is the superset of dates) -> weather + per-date scores
     cand = resolve_observations(grid, gaz, inside, offset_m=3000.0, naive=True)
@@ -136,7 +139,7 @@ def main() -> None:
                                          disturb_dist=disturb, forage=forage)["score_raw"])
 
     # headline: direction-aware @ 3 km; baseline: naive at-landmark; sweep over offset
-    used, pct, obs_bg = evaluate(resolve_observations(grid, gaz, inside, 3000.0), per_date_score)
+    used, pct, obs_bg = evaluate(resolve_observations(grid, gaz, inside, 3000.0, pins=pins), per_date_score)
     naive_used, naive_pct, _ = evaluate(cand, per_date_score)
 
     auc = float(pct.mean())
@@ -152,7 +155,7 @@ def main() -> None:
     p_val = float((null >= auc).mean())
     sweep = []
     for off in (0.0, 1500.0, 3000.0, 4500.0, 6000.0):
-        u, p, _ = evaluate(resolve_observations(grid, gaz, inside, off), per_date_score)
+        u, p, _ = evaluate(resolve_observations(grid, gaz, inside, off, pins=pins), per_date_score)
         sweep.append((off, len(u), float(p.mean()), V.top_quantile_lift(p, 0.20)[1]))
 
     # DIAGNOSTIC ablations (uses the test set -> hypotheses, not a validated retuning)
