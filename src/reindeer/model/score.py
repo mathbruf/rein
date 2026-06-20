@@ -152,3 +152,37 @@ def score_cells(elev, slope, tpi, w: WeatherDay,
     return {"score_raw": raw, "score": norm,
             "insect_pressure": np.full(raw.shape, p_ins),
             "shelter_pressure": np.full(raw.shape, p_shl)}
+
+
+def explain_cell(elev, tpi, p_ins, p_shl,
+                 dist_disturb=None, forage=None) -> str:
+    """A short human-readable reason why a cell scored high, given the day's regime.
+
+    Reflects the same logic the scorer uses, so the reason matches the number.
+    """
+    parts: list[str] = []
+    if p_ins >= 0.5 and p_ins >= p_shl:                 # insect/thermal day -> go high+exposed
+        if elev >= 1500:
+            parts.append("high ground")
+        if tpi >= 20:
+            parts.append("wind-exposed ridge")
+        elif tpi >= 0:
+            parts.append("open ground")
+        if not parts:
+            parts.append("insect-escape terrain")
+    elif p_shl >= 0.5:                                  # shelter day -> go low+leeward
+        if tpi <= -30:
+            parts.append("sheltered hollow")
+        elif tpi < 0:
+            parts.append("leeward ground")
+        if elev <= 1300:
+            parts.append("lower ground")
+        if not parts:
+            parts.append("shelter terrain")
+    else:                                               # calm/mild -> baseline high-ground pref
+        parts.append("high ground (baseline)" if elev >= 1400 else "mid-elevation")
+    if dist_disturb is not None and dist_disturb >= 3000:
+        parts.append("remote from access")
+    if forage is not None and forage >= 0.8:
+        parts.append("good forage")
+    return ", ".join(parts)

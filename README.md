@@ -50,12 +50,13 @@ python scripts/daily_map.py          # Phase 4: tomorrow's live forecast -> scor
 Outputs land in `data/processed/*.csv` (EPSG:25832; import into QGIS as delimited text).
 
 ## Status
-Phases 0–3 complete: the rule-based scorer turns a forecast + the static layers
+Phases 0–4 complete. The rule-based scorer turns a forecast + the static layers
 (terrain, disturbance, forage) into a 0–1 grid over the field, with weights tuned to the
-hunter's field experience. **Phase 4 in progress** — `daily_map.py` produces tomorrow's
-scored grid + ranked top-zones from a live MET forecast; heatmap rendering is the remaining
-Phase-4 piece. Phase 5 (validation against harvested sightings) needs a free MET Frost key.
-See `PROGRESS.md` for the exact next action.
+hunter's field experience. **`python scripts/daily_map.py`** fetches tomorrow's live MET
+forecast and produces, in one command: a scored grid CSV, a heatmap PNG with the top zones
+marked (`data/processed/maps/`), and a ranked top-zone list with a per-zone reason and the
+nearest named landmark. **Next: Phase 5** — validate the scorer against the harvested
+sightings; this needs a free MET Frost client ID (frost.met.no). See `PROGRESS.md`.
 
 ## Last session
 This is the last claude-code session: claude --resume 4ba2afce-adc5-4f3a-a435-c6ff4fb59d8c
