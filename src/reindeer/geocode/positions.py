@@ -42,11 +42,13 @@ def load_manual_pins(path: Path = MANUAL_PINS_CSV) -> dict:
         return pins
     with p.open(encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            rlat, rlon = row.get("real_lat", "").strip(), row.get("real_lon", "").strip()
-            if not rlat or not rlon:
+            rlat, rlon = (row.get("real_lat") or "").strip(), (row.get("real_lon") or "").strip()
+            try:                       # skip blanks and notes like 'unsure'/'alright'
+                lat, lon = float(rlat), float(rlon)
+            except ValueError:
                 continue
-            east, north = _to_utm.transform(float(rlon), float(rlat))
-            pins[(row["landmark"].lower(), row.get("method", "any").strip() or "any")] = (east, north)
+            east, north = _to_utm.transform(lon, lat)
+            pins[(row["landmark"].lower(), (row.get("method") or "any").strip() or "any")] = (east, north)
     return pins
 
 # compass unit vectors in EPSG:25832 (east, north), keys folded (ø->o, å->a, æ->ae)

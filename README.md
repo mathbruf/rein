@@ -58,16 +58,18 @@ live MET forecast and produces, in one command, a scored grid CSV, a heatmap PNG
 top zones marked, and a ranked top-zone list with per-zone reasons and nearest landmark.
 
 **Honest validation result (`docs/validation_report.md`, `docs/validation_bug_audit.md`):**
-tested against held-out hunting-season sightings, the current scorer ranks them *below*
-chance (date-matched AUC ≈ 0.41 after a geocoding-bug fix) — it is still mildly
-**anti-correlated** with where reindeer were reported in autumn. A bug audit confirmed the
-measurement chain is sound and fixed a fuzzy-geocoding error (a valley wrongly matched to a
-stream) that alone had dragged AUC down to 0.32. The residual is a genuine season mismatch:
-on calm, cool autumn days both weather regimes go quiet, so the map collapses to the summer
-high-ground + disturbance priors, which don't match autumn reports. The weights were **not**
-retuned to the test set; the next cycle is a seasonal (autumn) profile + effort-aware
-re-test under cross-validation (IDEAS 008–010). So this is an honest, validated
-**prototype**, not yet a v1.0. See `PROGRESS.md`.
+tested against held-out hunting-season sightings using **real ERA5 weather on each report's
+exact date** and **human-pinned real positions** (evaluated over a 2.5 km zone, since
+"nord for X" names an area), the current scorer ranks the reported areas **at chance**
+(date-matched AUC ≈ 0.48; 51% in the model's favoured half; p≈0.6). It is **not**
+anti-correlated. Earlier worse-than-chance numbers (AUC 0.32) turned out to be artifacts of
+a fuzzy-geocoding bug (a valley matched to a stream, now fixed) and a positional offset
+assumption (now replaced by the pins) — with correct positions the shipped rules are the
+best of the ablations. The honest reading: on calm, cool autumn days both weather regimes go
+quiet, so the map is mostly static priors and is **uninformative** (not wrong) for that
+window. The weights were **never** fitted to the sightings. Next cycle: an autumn seasonal
+profile that adds real signal, re-tested under cross-validation (IDEAS 008–010). So this is
+an honest, validated **prototype**, not yet a v1.0. See `PROGRESS.md`.
 
 ## Last session
 This is the last claude-code session: claude --resume 4ba2afce-adc5-4f3a-a435-c6ff4fb59d8c
