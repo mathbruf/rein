@@ -73,14 +73,35 @@ def _norm(s: str) -> str:
     return s
 
 
+# Trailing generic roots (folded) that name a feature TYPE. If the query carries one
+# of these and the match does not share it, they are different kinds of feature and the
+# fuzzy hit is rejected (e.g. 'Raudalen' valley -> 'Raudbekken' stream).
+_GENERIC_ROOTS = (
+    "dalen", "dal", "vatnet", "vatn", "tjon", "fjellet", "fjell", "bekken", "bekk",
+    "elva", "elv", "flyi", "flye", "fly", "botn", "nuten", "nut", "berget", "berg",
+    "setra", "seter", "nes", "hoe", "hogda", "egga", "egg", "osen",
+)
+
+
+def _generic_root(s: str) -> str | None:
+    for g in _GENERIC_ROOTS:
+        if s.endswith(g):
+            return g[:3]
+    return None
+
+
 def _name_similar(query: str, matched: str) -> bool:
     """A fuzzy hit is trustworthy only if its name actually resembles the query:
-    same first letters AND a high folded-string ratio. Blocks 'Sotfly'->'Nordli'
-    and 'Liafjellet'->'Tverrfjellet' while keeping 'Heggebottflye'->'Heggebottflyi'."""
+    same first letters AND a high folded-string ratio, AND the same feature-type
+    generic. Blocks 'Sotfly'->'Nordli', 'Liafjellet'->'Tverrfjellet' and
+    'Raudalen'(valley)->'Raudbekken'(stream) while keeping 'Heggebottflye'->'Heggebottflyi'."""
     q, m = _norm(query), _norm(matched)
     if not q or not m:
         return False
     if len(m) < len(q) - 3:   # matched a short substring, e.g. 'Skjåkgrunn'->'Skjåk'
+        return False
+    gq = _generic_root(q)
+    if gq is not None and gq not in m:   # query is a -dalen/-vatn/... the match lacks
         return False
     ratio = SequenceMatcher(None, q, m).ratio()
     return ratio >= 0.80 or (q[:3] == m[:3] and ratio >= 0.62)

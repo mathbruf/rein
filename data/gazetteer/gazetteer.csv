@@ -5,7 +5,7 @@ Skjåk,ok,Skjåk,Gard,Skjåk,466880.64,6860446.04,25.03,400.0,1,18
 Aursjoen,ok,Aursjoen,Innsjø,Skjåk,461909.78,6867419.67,21.03,800.0,1,17
 Tundradalen,needs_review,Svadalen,Dal,Lesja,476708.48,6892281.02,8.29,3000.0,3,17
 Finndalen,ambiguous,Finndalen,Dal,"Lom,Vågå",489015.88,6865472.71,23.81,3000.0,2,16
-Raudalen,fuzzy,Raudbekken,Bekk,Lesja,493725.84,6892075.64,20.79,1500.0,12,13
+Raudalen,needs_review,Raudbekken,Bekk,Lesja,493725.84,6892075.64,20.79,1500.0,12,13
 Tverrfjellet,ambiguous,Tverrfjellet,Fjell,Lesja,475328.03,6890293.91,6.06,1200.0,2,11
 Buanose,needs_review,Nose,Fjell,Lesja,497003.82,6888737.39,22.99,1200.0,2,10
 Mårådalen,needs_review,Valådalen,Dal,Lesja,471544.96,6892022.62,8.25,3000.0,9,10
@@ -23,7 +23,7 @@ Gjelåflaten,needs_review,Viflaten,Slette,Lesja,479836.76,6893761.82,10.89,1500.
 Huguvarden,needs_review,Varden,Varde,Lesja,484485.3,6892934.19,13.24,1200.0,2,4
 Kollongen,fuzzy,Kollen,Topp,Lesja,491981.83,6894974.6,20.53,1200.0,5,4
 Lom,ambiguous,Lom stavkyrkje,Kirke,Lom,477152.62,6856410.19,28.02,1500.0,2,4
-Skjellflye,fuzzy,Skjellbekken,Bekk,Lesja,484159.6,6885176.37,9.75,1500.0,2,4
+Skjellflye,needs_review,Skjellbekken,Bekk,Lesja,484159.6,6885176.37,9.75,1500.0,2,4
 Sotflye,needs_review,Flye,Hei,Lesja,469765.34,6895151.37,11.82,2500.0,3,4
 Glittervatnet,needs_review,Storvatnet,Vann,"Skjåk,Lesja",448149.49,6890066.11,26.92,800.0,2,3
 Leirungsvatnet,ok,Leirungsvatnet,Vann,Skjåk,473479.58,6871213.82,13.12,800.0,1,3
@@ -53,7 +53,7 @@ Storskaret,fuzzy,Storskardet,Skar,"Lesja,Skjåk",474131.0,6874062.9,10.24,1500.0
 Storvatnet,ok,Storvatnet,Vann,"Skjåk,Lesja",448149.49,6890066.11,26.92,800.0,1,2
 Styggehøe,needs_review,Styggeværskvila,Annen terrengdetalj,Skjåk,468821.8,6870330.46,15.06,1500.0,4,2
 Trihø,ok,Trihøin,Fjell,Lesja,472495.81,6876168.62,8.36,1200.0,1,2
-Tundradalsbotn,fuzzy,Tundradalsvegen,Adressenavn,Skjåk,452634.49,6864908.98,29.19,1500.0,1,2
+Tundradalsbotn,needs_review,Tundradalsvegen,Adressenavn,Skjåk,452634.49,6864908.98,29.19,1500.0,1,2
 Åfottjønnen,fuzzy,Åflotjønne,Tjern,Skjåk,457373.72,6872196.93,20.93,800.0,2,2
 Breidalseggje,needs_review,Skarvedalseggen,Fjell,Skjåk,451952.97,6879902.08,22.92,1200.0,2,1
 Brettinga,fuzzy,Brettingstungan,Fjellside,Lom,483824.0,6869645.89,17.4,1200.0,5,1
@@ -81,7 +81,7 @@ Gråhøflye,ok,Gråhøflyi,Slette,Lom,480643.91,6870116.76,15.48,1500.0,1,1
 Heggebottflyen,fuzzy,Indre Heggebottflyi,Hei,Skjåk,453195.84,6873339.69,23.91,2500.0,5,1
 Honnsjoen,ok,Honnsjoen,Vann,Lom,477008.61,6863208.96,21.25,800.0,1,1
 Jehanshøa,fuzzy,Jehanstjønne,Tjern,Skjåk,465735.73,6871805.64,15.23,800.0,3,1
-Jehanshøe,fuzzy,Jehanstjønne,Tjern,Skjåk,465735.73,6871805.64,15.23,800.0,3,1
+Jehanshøe,needs_review,Jehanstjønne,Tjern,Skjåk,465735.73,6871805.64,15.23,800.0,3,1
 Juvkampen,fuzzy,Kampen,Topp,Lesja,468762.81,6896434.6,13.4,1200.0,4,1
 Kjerringtjønnen,needs_review,Kjerringhøe,Haug,Lesja,490583.49,6898996.22,21.83,1500.0,1,1
 Kjølen,ok,Kjølen,Fjell,Lesja,483296.9,6878796.76,10.42,1200.0,1,1
@@ -101,7 +101,7 @@ Løyftet,ambiguous,Søre Løyftet,Skar,Lesja,460163.71,6883415.66,14.31,1500.0,2
 Meborrotjønne,needs_review,Myrtjønne,Tjern,Lesja,478399.28,6893446.4,9.96,800.0,7,1
 Mjølahaugan,ok,Mjølahaugan,Fjell,Skjåk,455564.77,6870862.39,23.18,1200.0,1,1
 Mjølahaugen,needs_review,Haugen,Eiendom,Lesja,483506.97,6890789.37,11.14,1500.0,16,1
-Nysetra,fuzzy,Nysætri,Seter/støl,Lesja,466375.7,6880445.22,8.94,400.0,2,1
+Nysetra,needs_review,Nysætri,Seter/støl,Lesja,466375.7,6880445.22,8.94,400.0,2,1
 Raubergsløftet,needs_review,Raudbergi,Fjell,Lesja,466729.25,6897762.78,15.52,1200.0,2,1
 Raudalsvatnet,needs_review,Skarvedalsvatnet,Vann,Skjåk,450874.59,6881197.89,23.77,800.0,3,1
 Resskulan,fuzzy,Resvollan,Bruk,Lom,472876.8,6859082.74,25.27,400.0,1,1
@@ -124,7 +124,7 @@ Sovarhaugen,ok,Sovarhaugen,Haug,Lesja,457671.92,6887342.89,17.05,1500.0,1,1
 Spongi,needs_review,Spongtjønne,Vann,"Skjåk,Lesja",447802.05,6892197.3,27.79,800.0,4,1
 Spongvatnet,ok,Spongvatnet,Vann,Skjåk,445983.09,6891604.19,29.38,800.0,1,1
 Stamåa,fuzzy,Stamåhjulet,Fjell,Skjåk,449075.64,6879146.49,25.89,1200.0,5,1
-Stamåfly,fuzzy,Stamåhjulet,Fjell,Skjåk,449075.64,6879146.49,25.89,1200.0,4,1
+Stamåfly,needs_review,Stamåhjulet,Fjell,Skjåk,449075.64,6879146.49,25.89,1200.0,4,1
 Steindalen,needs_review,Strypdalen,Dal,Lesja,481687.34,6887425.6,7.89,3000.0,36,1
 Steinflya,needs_review,Steinbotnen,Botn,Lesja,465184.74,6885585.74,9.35,1500.0,13,1
 Steinflye,ok,Steinflyi,Fjellside,Lom,482892.89,6871298.88,15.51,1200.0,1,1

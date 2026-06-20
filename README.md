@@ -57,15 +57,17 @@ maps in `data/processed/maps/`; the validation write-up in `docs/validation_repo
 live MET forecast and produces, in one command, a scored grid CSV, a heatmap PNG with the
 top zones marked, and a ranked top-zone list with per-zone reasons and nearest landmark.
 
-**Honest validation result (`docs/validation_report.md`):** tested against 52 held-out
-hunting-season sightings, the current scorer ranks them *below* chance (date-matched
-AUC 0.32) — it is **anti-correlated** with where reindeer were reported in autumn.
-Ablation shows the summer high-ground baseline and the disturbance penalty cause this
-(reports are autumn, with insects gone and animals lower, and are effort-biased toward
-accessible terrain). The weights were **not** retuned to the test set; the fix — a
-seasonal (autumn) profile and an effort-aware re-test under cross-validation — is the next
-cycle (IDEAS 008–010). So this is an honest, validated **prototype**, not yet a v1.0.
-See `PROGRESS.md`.
+**Honest validation result (`docs/validation_report.md`, `docs/validation_bug_audit.md`):**
+tested against held-out hunting-season sightings, the current scorer ranks them *below*
+chance (date-matched AUC ≈ 0.41 after a geocoding-bug fix) — it is still mildly
+**anti-correlated** with where reindeer were reported in autumn. A bug audit confirmed the
+measurement chain is sound and fixed a fuzzy-geocoding error (a valley wrongly matched to a
+stream) that alone had dragged AUC down to 0.32. The residual is a genuine season mismatch:
+on calm, cool autumn days both weather regimes go quiet, so the map collapses to the summer
+high-ground + disturbance priors, which don't match autumn reports. The weights were **not**
+retuned to the test set; the next cycle is a seasonal (autumn) profile + effort-aware
+re-test under cross-validation (IDEAS 008–010). So this is an honest, validated
+**prototype**, not yet a v1.0. See `PROGRESS.md`.
 
 ## Last session
 This is the last claude-code session: claude --resume 4ba2afce-adc5-4f3a-a435-c6ff4fb59d8c
