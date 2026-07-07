@@ -20,6 +20,7 @@ from reindeer.viz.render import render_heatmap  # noqa: E402
 
 PROCESSED = _ROOT / "data" / "processed"
 MAPS = PROCESSED / "maps"
+DTM = _ROOT / "data" / "raw" / "dem" / "dtm_50m_25833.tif"
 
 
 def main() -> None:
@@ -30,7 +31,9 @@ def main() -> None:
         df = pd.read_csv(csv)
         name = csv.stem.replace("score_", "")
         out = render_heatmap(df["east"], df["north"], df["score"],
-                             MAPS / f"{name}.png", title=f"Lordalen presence - {name}")
+                             MAPS / f"{name}.png",
+                             title="Reindeer presence — Lordalen", subtitle=name,
+                             dtm_path=DTM)
         print(f"  {csv.name} -> {out}")
     print(f"\n{len(csvs)} map(s) -> {MAPS}")
 

@@ -212,16 +212,29 @@ def main() -> None:
     full_auc = abl_rows[0][1]
     low_auc = next((a for n, a in abl_rows if n.startswith("prefer LOW")), float("nan"))
     nobase_auc = next((a for n, a in abl_rows if "high-ground" in n), float("nan"))
-    diag_note = (
-        f"With the corrected positions the **shipped model ({full_auc:.3f})** sits at the top "
-        f"of the ablation: removing the high-ground baseline ({nobase_auc:.3f}) or preferring "
-        f"low ground ({low_auc:.3f}) both make it **worse**. The earlier finding that removing "
-        "those rules helped was an **artifact of mis-located valley positions** (bad fuzzy "
-        "geocode + a 3 km offset assumption), now fixed by the human pins. On this corrected "
-        "set no single rule clearly lifts the ranking — the model is simply ~uninformative for "
-        "calm autumn weather, when both weather regimes are near zero."
-        if full_auc >= max(low_auc, nobase_auc) else
-        f"Ablation: full {full_auc:.3f}, no-baseline {nobase_auc:.3f}, low-ground {low_auc:.3f}.")
+    nodist_auc = next((a for n, a in abl_rows if "disturbance" in n), float("nan"))
+    best_name, best_auc = max(abl_rows, key=lambda t: t[1])
+    if best_name.startswith("full"):
+        diag_note = (
+            f"The **shipped model ({full_auc:.3f})** is the best ablation: removing the "
+            f"high-ground baseline ({nobase_auc:.3f}) or preferring low ground ({low_auc:.3f}) "
+            "both make it worse. No single rule cleanly lifts the ranking.")
+    elif "disturbance" in best_name:
+        diag_note = (
+            f"On this corrected set the shipped model scores {full_auc:.3f}; the only change "
+            f"that raises the ranking is **removing the disturbance penalty** ({nodist_auc:.3f}). "
+            "That is the expected signature of the **effort-bias confound** — reports come from "
+            "where hunters can get to, so penalising accessible ground lowers the *apparent* "
+            "hit-rate even if the rule is ecologically right. We treat this as a measurement "
+            "artifact to resolve with an effort covariate (IDEA 009), not evidence to drop the "
+            "rule. Removing the high-ground baseline (%.3f) or preferring low ground (%.3f) both "
+            "make it worse, so the summer-vs-autumn baseline is not the problem here."
+            % (nobase_auc, low_auc))
+    else:
+        diag_note = (
+            f"Ablation: full {full_auc:.3f}, no-disturbance {nodist_auc:.3f}, no-baseline "
+            f"{nobase_auc:.3f}, low-ground {low_auc:.3f}; best = {best_name.strip('- ')} "
+            f"({best_auc:.3f}).")
 
     lines = [
         "# Phase 5 — Validation Report",
@@ -241,7 +254,9 @@ def main() -> None:
         "(rank-based; apples-to-apples zone-vs-zones).",
         "- **Design:** presence-vs-background over the field (Lordalen + Dalsida), date-matched.",
         "- **Weather:** ERA5 daytime (06–18) at the field centroid via the Open-Meteo "
-        "archive (free; stands in for MET Frost, which needs a client ID).",
+        "archive (free; stands in for MET Frost, which needs a client ID). The scorer (v1) "
+        "**downscales** this single reading to per-cell temperature (lapse rate) and wind "
+        "(terrain exposure), so the tops are modeled colder/windier than the valley value.",
         "",
         "## Model precision vs actual readings (the headline metric)",
         "Of the actual sightings, what fraction did the model place on its favored ground "
@@ -276,10 +291,13 @@ def main() -> None:
         *[f"{n:26s} {a:.3f}" for n, a in abl_rows],
         "```",
         f"- {diag_note}",
-        "- These are **hunting-season** reports in calm, cool weather (mean wind ~2 m/s, "
-        "~8 °C), so the insect and shelter regimes are both near zero and the map is mostly "
-        "the static priors. An autumn-specific profile that adds real signal for that window "
-        "is the next step (IDEAS 008–010) — to be re-tested under cross-validation.",
+        "- **Per-cell weather downscaling (scorer v1)** now models the tops as cold and windy "
+        "even when the valley reading is mild, so the shelter regime engages on the calm, cool "
+        "autumn days that used to leave the old area-wide scorer flat. That lifted the "
+        f"favoured-half hit-rate from 51% (v0) to {hit_half*100:.0f}% (v1) and the AUC from "
+        f"0.484 to {auc:.3f}. The direction is right, but against a {len(used)}-report sample "
+        f"the change is within sampling noise (p ≈ {p_val:.2f}); a larger, cross-validated set "
+        "is needed to call it better than chance (IDEAS 002, 010).",
         "",
         "### Naive baseline (bare landmark point, no pins, no radius)",
         f"- Date-matched AUC: **{naive_pct.mean():.3f}** on {len(naive_used)} obs — far worse, "
@@ -304,8 +322,9 @@ def main() -> None:
         "rely on landmark + direction. Remaining positional noise can only depress the score.",
         "- **Effort/observer bias:** presence-only reports from where hunters go; background "
         "is the whole field, so the result partly reflects reporting, not only true presence.",
-        "- **Weather:** ERA5 reanalysis (gridded, elevation-smoothed), area-wide per day, "
-        "not per-cell micro-weather.",
+        "- **Weather:** ERA5 reanalysis is one area reading per day; the scorer downscales it "
+        "by lapse rate + terrain exposure (a physical model, not measured micro-weather), so "
+        "ridge wind/temperature are estimated, not observed.",
         "- **Observer bias confound:** we cannot separate 'disturbance penalty is wrong' "
         "from 'reports are effort-biased toward accessible terrain'. A fair test needs an "
         "effort covariate or a background restricted to where hunters actually go.",

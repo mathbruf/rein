@@ -1,4 +1,4 @@
-"""Phase 3: rule-based daily scoring engine (v0).
+"""Phase 3: rule-based daily scoring engine (v1 — per-cell weather).
 
 Turns next-day weather + the static terrain layers into a 0..1 presence score per
 250 m cell. This is the heart of the project: a transparent, expert-tunable scoring
@@ -6,20 +6,38 @@ function — NOT a fitted model. Every weight and threshold below is a named con
 with a comment so a domain expert (the hunter) can tune it. Sightings are not used
 here; they are kept for Phase-5 validation only.
 
-Behavioral logic (CLAUDE.md §1), encoded as two competing weather-gated regimes:
+Behavioral logic (CLAUDE.md §1), encoded as two competing weather-gated regimes over
+a *per-cell downscaling* of the area forecast, so the map is never flat on a calm day:
+
+  WEATHER DOWNSCALING (new in v1; physics, not fitted):
+     one area forecast (a single temp/wind for the field) is turned into a per-cell
+     field. Temperature falls with elevation at the standard environmental lapse rate
+     (~6.5 °C/km), so the tops are modeled colder than the valley reading; wind is
+     amplified on wind-exposed ground (+TPI ridges/summits) and damped in hollows
+     (−TPI). This is the single biggest reason the old area-wide scorer went
+     *uninformative* for the hunt window: on a "calm, cool" autumn day the valley
+     reading turned BOTH regimes off, yet the exposed tops are genuinely cold and
+     windy. Downscaling lets the shelter regime engage from the terrain itself.
+
+  DAY DRIVERS (region-level regime switches, from the downscaled field):
+     insect driver  = insect pressure in the WARM lowland (warm tail of the field):
+        if flies are biting anywhere it is in the low, calm, sunny ground.
+     shelter driver = harshness on the EXPOSED tops (cold/windy tail of the field):
+        if it is cold/windy anywhere the exposed animals feel it first.
+
+  INSECT / THERMAL regime  (warm + calm + DRY day):
+     mosquitoes / warble & bot flies push reindeer UPHILL off the biting lowland ->
+     a cell is favored when it is itself insect-free (cold and/or windy) and
+     wind-exposed. Rain grounds the flies, so the driver switches off in the wet.
+
+  SHELTER regime  (cold OR wet OR windy day):
+     animals seek shelter and graze lower / leeward -> a cell is favored when it is
+     itself calm and mild (not cold, not wind-scoured) and topographically leeward.
+     Per the hunter, weather/shelter dominates day-to-day movement more than insects
+     do (W_SHELTER > W_INSECT).
 
   BASELINE: a gentle always-on preference for high ground (hunter: "mostly 1300 m+"),
-     which the two weather regimes (and later, hunting disturbance) pull them off.
-
-  INSECT / THERMAL regime  (warm + calm + DRY days):
-     mosquitoes / warble & bot flies push reindeer UPHILL to wind-exposed, cool
-     ground -> favor high elevation + positive TPI (ridges/summits/exposed).
-     Rain grounds the flies, so this drive switches off when it rains.
-
-  SHELTER regime  (cold OR wet OR very windy days):
-     animals seek shelter and graze lower / leeward -> favor lower elevation +
-     negative TPI (valleys/hollows). Per the hunter, weather/shelter dominates the
-     day-to-day movement more than insects do (W_SHELTER > W_INSECT).
+     which the two weather regimes (and disturbance) pull them off.
 
   FORAGE: NIBIO AR50 land cover -> a per-cell destination value (open alpine ground
      and mire score high; forest lower; water/glacier/built ~0). Additive (W_FORAGE).
@@ -28,10 +46,6 @@ Behavioral logic (CLAUDE.md §1), encoded as two competing weather-gated regimes
 
   DISTURBANCE penalty: cells near roads/trails/cabins are discounted (W_DISTURB),
      fading with distance — "they come lower only if hunters allow".
-
-The two regimes are gated by weather "pressures" in [0,1], so a warm calm day makes
-the high ground light up and a cold windy day flips the surface to the valleys — the
-project's core thesis, visible in one function.
 """
 from __future__ import annotations
 
@@ -47,6 +61,15 @@ TPI_SCALE_M = 60.0    # TPI mapped from [-60,+60] m onto [0,1]; >0 = exposed hig
 SLOPE_STEEP_LO = 30.0  # slope (deg) where the travel penalty starts
 SLOPE_STEEP_HI = 45.0  # slope (deg) at/above which the penalty is full
 DISTURB_DECAY_M = 2500.0  # disturbance penalty fades from full (at a feature) to 0 by this distance
+
+# --- weather downscaling (physics; NOT fitted to sightings) ----------------------
+LAPSE_C_PER_M = 6.5e-3          # environmental lapse rate ~6.5 °C per 1000 m
+WIND_EXPOSURE_GAIN = 1.0        # ±100% of the area wind across the exposure range
+WIND_EXPOSURE_TPI_M = 60.0      # TPI (m) mapped onto the [−1,+1] exposure scale (ridge..hollow)
+DAY_WARM_PCTL = 90.0            # "the warm lowland" percentile for the insect driver
+DAY_CALM_PCTL = 10.0            # calmest air (hollows) for the insect driver
+DAY_COLD_PCTL = 10.0            # "the exposed tops" (coldest) for the shelter driver
+DAY_WINDY_PCTL = 90.0           # windiest air (ridges) for the shelter driver
 
 # --- weather -> pressure ramps ---------------------------------------------------
 # Insect activity climbs with warmth and is suppressed by wind.
@@ -70,15 +93,15 @@ W_BASELINE = 0.3   # gentle always-on pull to high ground [hunter: "mostly 1300 
 W_DISTURB = 0.6    # disturbance penalty strength [hunter: "lower only if hunters allow"]
 W_FORAGE = 0.4     # additive forage destination value (NIBIO AR50 land cover)
 
-# within-regime terrain mix (how much elevation vs exposure each regime cares about)
-REFUGE_ELEV_W, REFUGE_TPI_W = 0.6, 0.4   # insect/thermal: high + exposed
-SHELTER_ELEV_W, SHELTER_TPI_W = 0.6, 0.4  # shelter: low + sheltered
+# within-regime cell-quality mix (how the per-cell comfort vs terrain shape combine)
+REFUGE_COOL_W, REFUGE_EXPOSE_W = 0.7, 0.3   # insect escape: insect-free air + exposed ground
+SHELTER_CALM_W, SHELTER_LEE_W = 0.7, 0.3    # shelter: mild/calm air + leeward hollow
 
 
 @dataclass
 class WeatherDay:
-    """Area-wide next-day forecast scalars (v0 uses one value for the whole field;
-    spatial weather interpolation is a Phase-4 refinement)."""
+    """Area-wide next-day forecast scalars (one reading for the field); the scorer
+    downscales these to per-cell temperature/wind by elevation and exposure."""
     temp_c: float
     wind_ms: float
     precip_mm: float
@@ -86,24 +109,54 @@ class WeatherDay:
 
 def _ramp(x, lo, hi):
     """Linear 0->1 as x goes lo->hi (clipped). Handle hi<lo (descending) too."""
+    x = np.asarray(x, float)
     if hi == lo:
         return np.where(x >= hi, 1.0, 0.0)
     return np.clip((x - lo) / (hi - lo), 0.0, 1.0)
 
 
-def insect_pressure(w: WeatherDay) -> float:
-    warm = float(_ramp(w.temp_c, INSECT_T_LO, INSECT_T_HI))
-    calm = float(_ramp(w.wind_ms, INSECT_W_BREEZY, INSECT_W_CALM))  # descending
-    dry = 1.0 - float(_ramp(w.precip_mm, 0.0, INSECT_RAIN_OFF_MM))  # rain grounds the flies
+def _insect_p(temp_c, wind_ms, precip_mm):
+    """Insect pressure (0..1) — warm AND calm AND dry. Vectorised over cells."""
+    warm = _ramp(temp_c, INSECT_T_LO, INSECT_T_HI)
+    calm = _ramp(wind_ms, INSECT_W_BREEZY, INSECT_W_CALM)  # descending
+    dry = 1.0 - _ramp(precip_mm, 0.0, INSECT_RAIN_OFF_MM)  # rain grounds the flies
     return warm * calm * dry
 
 
-def shelter_pressure(w: WeatherDay) -> float:
-    cold = float(_ramp(w.temp_c, COLD_T_HI, COLD_T_LO))   # descending
-    wet = float(_ramp(w.precip_mm, 0.0, WET_MM_FULL))
-    windy = float(_ramp(w.wind_ms, WIND_HI_LO, WIND_HI_HI))
-    # probabilistic OR: any driver can push the animals to shelter
+def _shelter_p(temp_c, wind_ms, precip_mm):
+    """Shelter drive (0..1) — probabilistic OR of cold, wet, windy. Vectorised."""
+    cold = _ramp(temp_c, COLD_T_HI, COLD_T_LO)   # descending
+    wet = _ramp(precip_mm, 0.0, WET_MM_FULL)
+    windy = _ramp(wind_ms, WIND_HI_LO, WIND_HI_HI)
     return 1.0 - (1.0 - cold) * (1.0 - wet) * (1.0 - windy)
+
+
+def insect_pressure(w: WeatherDay) -> float:
+    """Area-wide insect pressure at the raw forecast reading (scalar; for reporting)."""
+    return float(_insect_p(w.temp_c, w.wind_ms, w.precip_mm))
+
+
+def shelter_pressure(w: WeatherDay) -> float:
+    """Area-wide shelter drive at the raw forecast reading (scalar; for reporting)."""
+    return float(_shelter_p(w.temp_c, w.wind_ms, w.precip_mm))
+
+
+def downscale_weather(w: WeatherDay, elev, tpi, ref_elev=None):
+    """Per-cell (temp_c, wind_ms) from the area forecast — physics, not fitted.
+
+    temp: falls with elevation at the standard lapse rate relative to ref_elev (the
+      elevation the area reading represents; default = field mean elevation).
+    wind: scaled by terrain exposure — amplified on +TPI ridges, damped in −TPI
+      hollows — so the tops are modeled windier than a valley reading.
+    """
+    elev = np.asarray(elev, float)
+    tpi = np.asarray(tpi, float)
+    if ref_elev is None:
+        ref_elev = float(np.nanmean(elev))
+    temp = w.temp_c - LAPSE_C_PER_M * (elev - ref_elev)
+    expo = np.clip(tpi / WIND_EXPOSURE_TPI_M, -1.0, 1.0)   # −1 hollow .. +1 ridge
+    wind = np.clip(w.wind_ms * (1.0 + WIND_EXPOSURE_GAIN * expo), 0.0, None)
+    return temp, wind
 
 
 def _terrain_norm(elev, tpi):
@@ -113,26 +166,46 @@ def _terrain_norm(elev, tpi):
 
 
 def score_cells(elev, slope, tpi, w: WeatherDay,
-                disturb_dist=None, forage=None) -> dict[str, np.ndarray]:
+                disturb_dist=None, forage=None,
+                downscale=True, ref_elev=None) -> dict[str, np.ndarray]:
     """Score arrays of per-cell terrain attributes for one weather day.
 
+    downscale: if True (default) the area forecast is turned into per-cell temp/wind
+      (lapse rate + terrain exposure); the regime switches come from the field's warm
+      lowland / harsh tops, and each cell's own comfort sets its refuge/shelter value.
+      If False, the legacy area-wide behavior is used (one reading, terrain proxies).
     disturb_dist: optional per-cell distance (m) to nearest disturbance feature;
-    when given (and W_DISTURB>0) cells near roads/trails/cabins are penalised.
+      when given (and W_DISTURB>0) cells near roads/trails/cabins are penalised.
     forage: optional per-cell forage value 0..1 (AR50); added when W_FORAGE>0.
 
-    Returns raw score plus the regime pressures used (for explanation) and a
-    0..1 normalised score (min-max over the scored cells) for the heatmap.
+    Returns raw score, a 0..1 normalised score (min-max) for the heatmap, and the
+    day-level regime pressures used (filled per cell, for explanation/reporting).
     """
     elev = np.asarray(elev, float)
     slope = np.asarray(slope, float)
     tpi = np.asarray(tpi, float)
     elev_n, tpi_n = _terrain_norm(elev, tpi)
 
-    refuge = REFUGE_ELEV_W * elev_n + REFUGE_TPI_W * tpi_n            # go-high target
-    shelter = SHELTER_ELEV_W * (1 - elev_n) + SHELTER_TPI_W * (1 - tpi_n)  # go-low target
-
-    p_ins = insect_pressure(w)
-    p_shl = shelter_pressure(w)
+    if downscale:
+        temp_c, wind_ms = downscale_weather(w, elev, tpi, ref_elev)
+        # regime switches from the field extremes: insects from the warm lowland,
+        # shelter from the cold/windy exposed tops (any harsh corner grounds them).
+        warm_lowland = float(np.nanpercentile(temp_c, DAY_WARM_PCTL))
+        calm_lowland = float(np.nanpercentile(wind_ms, DAY_CALM_PCTL))
+        cold_tops = float(np.nanpercentile(temp_c, DAY_COLD_PCTL))
+        windy_tops = float(np.nanpercentile(wind_ms, DAY_WINDY_PCTL))
+        p_ins = float(_insect_p(warm_lowland, calm_lowland, w.precip_mm))
+        p_shl = float(_shelter_p(cold_tops, windy_tops, w.precip_mm))
+        # per-cell comfort: are insects active / is it harsh AT this cell?
+        p_ins_cell = _insect_p(temp_c, wind_ms, w.precip_mm)
+        p_shl_cell = _shelter_p(temp_c, wind_ms, w.precip_mm)
+        refuge = REFUGE_COOL_W * (1.0 - p_ins_cell) + REFUGE_EXPOSE_W * tpi_n
+        shelter = SHELTER_CALM_W * (1.0 - p_shl_cell) + SHELTER_LEE_W * (1.0 - tpi_n)
+    else:
+        p_ins = float(_insect_p(w.temp_c, w.wind_ms, w.precip_mm))
+        p_shl = float(_shelter_p(w.temp_c, w.wind_ms, w.precip_mm))
+        refuge = 0.6 * elev_n + 0.4 * tpi_n              # legacy go-high target
+        shelter = 0.6 * (1 - elev_n) + 0.4 * (1 - tpi_n)  # legacy go-low target
 
     baseline = elev_n   # default home-range preference: high ground (hunter: "mostly 1300 m+")
     base = ((W_BASELINE * baseline)
@@ -161,7 +234,7 @@ def explain_cell(elev, tpi, p_ins, p_shl,
     Reflects the same logic the scorer uses, so the reason matches the number.
     """
     parts: list[str] = []
-    if p_ins >= 0.5 and p_ins >= p_shl:                 # insect/thermal day -> go high+exposed
+    if p_ins >= 0.3 and p_ins >= p_shl:                 # insect/thermal day -> go high+exposed
         if elev >= 1500:
             parts.append("high ground")
         if tpi >= 20:
@@ -170,7 +243,7 @@ def explain_cell(elev, tpi, p_ins, p_shl,
             parts.append("open ground")
         if not parts:
             parts.append("insect-escape terrain")
-    elif p_shl >= 0.5:                                  # shelter day -> go low+leeward
+    elif p_shl >= 0.3:                                  # shelter day -> go low+leeward
         if tpi <= -30:
             parts.append("sheltered hollow")
         elif tpi < 0:

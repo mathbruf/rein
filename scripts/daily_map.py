@@ -25,11 +25,21 @@ from pyproj import Transformer  # noqa: E402
 
 from reindeer.weather.forecast import fetch_forecast, next_day_weather  # noqa: E402
 from reindeer.model.score import score_cells, explain_cell  # noqa: E402
-from reindeer.viz.render import render_heatmap  # noqa: E402
+from reindeer.viz.render import render_heatmap, cluster_top_zones  # noqa: E402
 from reindeer.geocode.gazetteer import load_gazetteer  # noqa: E402
 
 PROCESSED = _ROOT / "data" / "processed"
+DTM = _ROOT / "data" / "raw" / "dem" / "dtm_50m_25833.tif"
 _to_wgs = Transformer.from_crs(25832, 4326, always_xy=True)
+
+
+def regime_sentence(p_ins, p_shl):
+    if p_ins >= 0.3 and p_ins >= p_shl:
+        return "Driver: insect-escape — animals climb to cool, breezy, exposed ground."
+    if p_shl >= 0.3:
+        return "Driver: shelter — animals seek leeward, sheltered, lower ground."
+    return ("Driver: weak — calm/mild day, little weather push; map leans on the "
+            "high-ground preference, forage and distance from access.")
 
 
 def nearest_landmark(east, north, entries):
@@ -69,33 +79,41 @@ def main() -> None:
     res = score_cells(field["elevation_m"], field["slope_deg"], field["tpi_m"], w,
                       disturb_dist=disturb, forage=forage)
     field["score"] = res["score"]
-    print(f"  regime: insect_pressure={res['insect_pressure'][0]:.2f}  "
-          f"shelter_pressure={res['shelter_pressure'][0]:.2f}")
+    p_ins, p_shl = res["insect_pressure"][0], res["shelter_pressure"][0]
+    print(f"  regime: insect_pressure={p_ins:.2f}  shelter_pressure={p_shl:.2f}")
 
     out = PROCESSED / f"score_live_{date}.csv"
     cols = ["cell_id", "east", "north", "elevation_m", "tpi_m", "score"]
     field[cols].to_csv(out, index=False, encoding="utf-8")
 
-    top = field.nlargest(12, "score")
+    # cluster the hot cells into distinct 'go here' zones, name + explain each
+    entries = list(load_gazetteer().values())
+    pts = cluster_top_zones(field["east"], field["north"], field["score"],
+                            n=6, min_sep_m=2500.0)
+    fe, fn = field["east"].to_numpy(), field["north"].to_numpy()
+    zones, print_rows = [], []
+    for i, (ze, zn, sc) in enumerate(pts, 1):
+        r = field.iloc[int(((fe - ze) ** 2 + (fn - zn) ** 2).argmin())]
+        name, dkm = nearest_landmark(ze, zn, entries)
+        reason = explain_cell(r["elevation_m"], r["tpi_m"], p_ins, p_shl,
+                              dist_disturb=r.get("dist_disturb_m"), forage=r.get("forage"))
+        zones.append((ze, zn, f"{name} area ({dkm:.1f} km)\n{r['elevation_m']:.0f} m · {reason}"))
+        plon, plat = _to_wgs.transform(ze, zn)
+        print_rows.append(f"  {i}. score {sc:.2f}  {plat:.4f}N {plon:.4f}E  "
+                          f"elev {r['elevation_m']:.0f} m  TPI {r['tpi_m']:+.0f}  "
+                          f"| {reason}  | near {name} ({dkm:.1f} km)")
+
+    weather_text = (f"forecast for {date}\n{w.temp_c:g} °C  ·  wind {w.wind_ms:g} m/s  ·  "
+                    f"{w.precip_mm:g} mm rain")
     png = render_heatmap(
         field["east"], field["north"], field["score"],
         PROCESSED / "maps" / f"live_{date}.png",
-        title=f"Lordalen presence - {date} ({w.temp_c}C {w.wind_ms}m/s {w.precip_mm}mm)",
-        top=(top["east"].to_numpy(), top["north"].to_numpy()))
+        title="Reindeer presence — Lordalen (tomorrow)",
+        subtitle=date, dtm_path=DTM, zones=zones,
+        weather_text=weather_text, regime_text=regime_sentence(p_ins, p_shl))
 
-    entries = list(load_gazetteer().values())
-    p_ins = res["insect_pressure"][0]
-    p_shl = res["shelter_pressure"][0]
-    print(f"\nTop 12 zones for {date} (lat/lon for the field notebook):")
-    for _, r in top.iterrows():
-        plon, plat = _to_wgs.transform(r["east"], r["north"])
-        name, dkm = nearest_landmark(r["east"], r["north"], entries)
-        reason = explain_cell(r["elevation_m"], r["tpi_m"], p_ins, p_shl,
-                              dist_disturb=r.get("dist_disturb_m"),
-                              forage=r.get("forage"))
-        print(f"  score {r['score']:.2f}  {plat:.4f}N {plon:.4f}E  "
-              f"elev {r['elevation_m']:.0f} m  TPI {r['tpi_m']:+.0f}  "
-              f"| {reason}  | near {name} ({dkm:.1f} km)")
+    print(f"\nTop zones for {date} (lat/lon for the field notebook):")
+    print("\n".join(print_rows))
     print(f"\n-> {out}  (QGIS: X=east, Y=north, CRS EPSG:25832)")
     print(f"-> {png}")
 
