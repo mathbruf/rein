@@ -1,0 +1,33 @@
+# Phase-1 dependencies (keep it light).
+requests
+beautifulsoup4
+lxml
+pandas
+python-dateutil
+pyproj
+shapely
+
+# Phase-3 dependencies (terrain layers + scoring) — INSTALLED 2026-06-19.
+numpy            # array maths for terrain derivatives + scoring
+rasterio         # read the Kartverket DTM GeoTIFF (wheel bundles GDAL)
+
+# Phase-4 dependencies (rendering the daily map) — INSTALLED 2026-06-19.
+matplotlib       # static heatmap PNG rendering
+
+# ---------------------------------------------------------------------------
+# Deferred dependencies — DO NOT install yet. Add each only when the phase
+# that needs it begins, to avoid early binary-install pain (especially on
+# Windows).
+#
+# Phase 3, if/when needed for the remaining static layers:
+#   geopandas        # vector layers (AR5 forage, N50 roads/trails/cabins)
+#   (so far avoided: terrain done with rasterio + numpy directly)
+#
+# Phase 4 (rendering the daily live forecast map):
+#   matplotlib       # static heatmap rendering
+#   folium           # interactive web map (optional)
+#
+# Validation & v1.0 (sightings-vs-score check):
+#   scikit-learn     # validation metrics / presence-background comparison
+#   xgboost          # optional RSF-style model, only if validation motivates it
+# ---------------------------------------------------------------------------

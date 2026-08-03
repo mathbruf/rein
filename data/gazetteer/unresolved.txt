@@ -1,0 +1,62 @@
+Landmarks with no SSR hit within the radius (manual review):
+
+ 17  Tundradalen            [needs_review] (weak candidate: Svadalen)
+ 13  Raudalen               [needs_review] (weak candidate: Raudbekken)
+ 10  Buanose                [needs_review] (weak candidate: Nose)
+ 10  Mårådalen              [needs_review] (weak candidate: Valådalen)
+  6  Lundadalen             [needs_review] (weak candidate: Lordalen)
+  5  Skjåkgrunn             [needs_review] (weak candidate: Skjåk)
+  4  Gjelåflaten            [needs_review] (weak candidate: Viflaten)
+  4  Huguvarden             [needs_review] (weak candidate: Varden)
+  4  Skjellflye             [needs_review] (weak candidate: Skjellbekken)
+  4  Sotflye                [needs_review] (weak candidate: Flye)
+  3  Glittervatnet          [needs_review] (weak candidate: Storvatnet)
+  3  Liafjellet             [needs_review] (weak candidate: Tverrfjellet)
+  2  Framrusthovden         [not_found]
+  2  Føysa                  [needs_review] (weak candidate: Føystjønne)
+  2  Føysfjellet            [needs_review] (weak candidate: Tverrfjellet)
+  2  Kollongshaugane        [not_found]
+  2  Kvennåa                [needs_review] (weak candidate: Kvennbekken)
+  2  Mårådalsbenken         [not_found]
+  2  Raubergsløyftet        [needs_review] (weak candidate: Søre Løyftet)
+  2  Råkåkampen             [needs_review] (weak candidate: Kampen)
+  2  Skjellom               [needs_review] (weak candidate: Skjellbekken)
+  2  Skridulaupen           [needs_review] (weak candidate: Skriduhøi)
+  2  Styggehøe              [needs_review] (weak candidate: Styggeværskvila)
+  2  Tundradalsbotn         [needs_review] (weak candidate: Tundradalsvegen)
+  1  Breidalseggje          [needs_review] (weak candidate: Skarvedalseggen)
+  1  Bråtådalføret          [not_found]
+  1  Dyringshøe             [needs_review] (weak candidate: Fellingshøi)
+  1  Døkte                  [needs_review] (weak candidate: Døktahytta)
+  1  Einstulkampen          [needs_review] (weak candidate: Kampen)
+  1  Gjerdingshøe           [needs_review] (weak candidate: Fellingshøi)
+  1  Grjothøa               [needs_review] (weak candidate: Gråhøe)
+  1  Jehanshøe              [needs_review] (weak candidate: Jehanstjønne)
+  1  Kjerringtjønnen        [needs_review] (weak candidate: Kjerringhøe)
+  1  Kollongshaugan         [needs_review] (weak candidate: Kvilhaugan)
+  1  Kollungshaugane        [not_found]
+  1  Langvassegga           [not_found]
+  1  Meborrotjønne          [needs_review] (weak candidate: Myrtjønne)
+  1  Mjølahaugen            [needs_review] (weak candidate: Haugen)
+  1  Nysetra                [needs_review] (weak candidate: Nysætri)
+  1  Raubergsløftet         [needs_review] (weak candidate: Raudbergi)
+  1  Raudalsvatnet          [needs_review] (weak candidate: Skarvedalsvatnet)
+  1  Sekken                 [needs_review] (weak candidate: Skalbekken)
+  1  Skarvedalsmunninga     [needs_review] (weak candidate: Skarvedalsreset)
+  1  Skautflye              [not_found]
+  1  Skrilaupen             [needs_review] (weak candidate: Skriu)
+  1  Sota                   [needs_review] (weak candidate: Nordli)
+  1  Sotfly                 [needs_review] (weak candidate: Nordli)
+  1  Sotlfye                [not_found]
+  1  Sotskarvet             [needs_review] (weak candidate: Bråskarvet)
+  1  Sottjønnen             [needs_review] (weak candidate: Svatjønne)
+  1  Spongi                 [needs_review] (weak candidate: Spongtjønne)
+  1  Stamåfly               [needs_review] (weak candidate: Stamåhjulet)
+  1  Steindalen             [needs_review] (weak candidate: Strypdalen)
+  1  Steinflya              [needs_review] (weak candidate: Steinbotnen)
+  1  Storvassområdet        [needs_review] (weak candidate: Storvassbue)
+  1  Svaåfjellet            [needs_review] (weak candidate: Tverrfjellet)
+  1  Vassvendeggje          [needs_review] (weak candidate: Vassveite)
+  1  Viahøe                 [not_found]
+  1  Viergrove              [needs_review] (weak candidate: Grove)
+  1  Åfottjern              [not_found]
