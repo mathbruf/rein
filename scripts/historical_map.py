@@ -21,10 +21,11 @@ if hasattr(sys.stdout, "reconfigure"):
 import pandas as pd  # noqa: E402
 from pyproj import Transformer  # noqa: E402
 
-from reindeer.weather.historical import fetch_archive, day_weather  # noqa: E402
+from reindeer.weather import field as WF  # noqa: E402
 from reindeer.model.score import score_cells, explain_cell  # noqa: E402
 from reindeer.viz.render import render_heatmap, cluster_top_zones  # noqa: E402
 from reindeer.geocode.gazetteer import load_gazetteer  # noqa: E402
+from reindeer.paths import outdir  # noqa: E402
 
 PROCESSED = _ROOT / "data" / "processed"
 DTM = _ROOT / "data" / "raw" / "dem" / "dtm_50m_25833.tif"
@@ -61,20 +62,23 @@ def main() -> None:
             df = df.merge(pd.read_csv(p)[["cell_id", col]], on="cell_id")
     field = df[df["in_lordalen"] == 1].copy()
 
-    cx, cy = field["east"].mean(), field["north"].mean()
-    lon, lat = _to_wgs.transform(cx, cy)
-    w = day_weather(fetch_archive(lat, lon, date, date), date)
-    print(f"{date}  daytime weather: temp={w.temp_c} C  wind={w.wind_ms} m/s  precip={w.precip_mm} mm")
+    ce, cn, cz = field["east"].to_numpy(), field["north"].to_numpy(), field["elevation_m"].to_numpy()
+    wf = WF.build_field("archive", date, ce, cn, cz)
+    t_med, w_med, p_mean = wf.area_summary()
+    w_dir = WF.circular_mean_dir(wf.wind_dir_deg, wf.wind_ms)
+    print(f"{date}  daytime weather (real ERA5 field): temp≈{t_med:.1f} C  wind≈{w_med:.1f} m/s "
+          f"from {w_dir:.0f}°  precip≈{p_mean:.1f} mm  | data lapse {wf.lapse_c_per_m*1000:+.1f} C/km")
 
     disturb = field["dist_disturb_m"] if "dist_disturb_m" in field else None
     forage = field["forage"] if "forage" in field else None
-    res = score_cells(field["elevation_m"], field["slope_deg"], field["tpi_m"], w,
+    res = score_cells(field["elevation_m"], field["slope_deg"], field["tpi_m"],
+                      wfield=wf, aspect=field["aspect_deg"],
                       disturb_dist=disturb, forage=forage)
     field["score"] = res["score"]
     p_ins, p_shl = res["insect_pressure"][0], res["shelter_pressure"][0]
     print(f"  regime: insect_pressure={p_ins:.2f}  shelter_pressure={p_shl:.2f}")
 
-    out_csv = PROCESSED / f"score_hist_{date}.csv"
+    out_csv = outdir("historical") / f"{date}.csv"
     field[["cell_id", "east", "north", "elevation_m", "tpi_m", "score"]].to_csv(
         out_csv, index=False, encoding="utf-8")
 
@@ -94,14 +98,15 @@ def main() -> None:
         print_rows.append(f"  {i}. score {sc:.2f}  {plat:.4f}N {plon:.4f}E  "
                           f"elev {r['elevation_m']:.0f} m  | {reason}  | near {name} ({dkm:.1f} km)")
 
-    weather_text = (f"{date}\n{w.temp_c:g} °C  ·  wind {w.wind_ms:g} m/s  ·  "
-                    f"{w.precip_mm:g} mm rain")
+    weather_text = (f"{date}\n{t_med:.1f} °C  ·  wind {w_med:.1f} m/s from {w_dir:.0f}°  ·  "
+                    f"{p_mean:.1f} mm rain")
     png = render_heatmap(
         field["east"], field["north"], field["score"],
-        PROCESSED / "maps" / f"hist_{date}.png",
+        outdir("historical") / f"{date}.png",
         title="Reindeer presence — Lordalen (historical)",
         subtitle=date, dtm_path=DTM, zones=zones,
-        weather_text=weather_text, regime_text=regime_sentence(p_ins, p_shl))
+        weather_text=weather_text, regime_text=regime_sentence(p_ins, p_shl),
+        wind_dir_deg=w_dir, wind_label=f"wind {w_med:.0f} m/s")
 
     print(f"\nTop zones for {date}:")
     print("\n".join(print_rows))

@@ -1,7 +1,7 @@
 """Phase 4: render scored grid CSVs to heatmap PNGs.
 
-Renders every data/processed/score_*.csv (the demo scenarios + any live map) to
-data/processed/maps/<name>.png.
+Renders every output/demo/*.csv (the fixed weather-scenario sanity grids from
+score_demo.py) to output/demo/<name>.png.
 
 Usage (repo root, venv active):
     python scripts/render_map.py
@@ -19,23 +19,23 @@ import pandas as pd  # noqa: E402
 from reindeer.viz.render import render_heatmap  # noqa: E402
 
 PROCESSED = _ROOT / "data" / "processed"
-MAPS = PROCESSED / "maps"
 DTM = _ROOT / "data" / "raw" / "dem" / "dtm_50m_25833.tif"
 
 
 def main() -> None:
-    csvs = sorted(PROCESSED.glob("score_*.csv"))
+    from reindeer.paths import outdir
+    csvs = sorted(outdir("demo").glob("*.csv"))
     if not csvs:
-        raise SystemExit("no score_*.csv found - run score_demo.py or daily_map.py first")
+        raise SystemExit("no output/demo/*.csv found - run score_demo.py first")
     for csv in csvs:
         df = pd.read_csv(csv)
-        name = csv.stem.replace("score_", "")
+        name = csv.stem
         out = render_heatmap(df["east"], df["north"], df["score"],
-                             MAPS / f"{name}.png",
+                             outdir("demo") / f"{name}.png",
                              title="Reindeer presence — Lordalen", subtitle=name,
                              dtm_path=DTM)
         print(f"  {csv.name} -> {out}")
-    print(f"\n{len(csvs)} map(s) -> {MAPS}")
+    print(f"\n{len(csvs)} map(s) -> {outdir('demo')}")
 
 
 if __name__ == "__main__":

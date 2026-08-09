@@ -55,8 +55,10 @@ import numpy as np
 
 # --- terrain normalisation anchors (fixed, so scores are reproducible & comparable
 #     across days rather than relative to whatever cells were loaded) ---------------
-ELEV_LO_M = 1000.0    # below here all ~equally "low" -> elev_norm 0  [hunter: mostly 1300 m+]
-ELEV_HI_M = 1900.0    # ~high open fjell             -> elev_norm 1
+from reindeer.area import AREA
+
+ELEV_LO_M = AREA.elev_lo_m  # below here all ~equally "low" -> elev_norm 0  [hunter: mostly 1300 m+]
+ELEV_HI_M = AREA.elev_hi_m  # ~high open fjell             -> elev_norm 1  (config/area.json)
 TPI_SCALE_M = 60.0    # TPI mapped from [-60,+60] m onto [0,1]; >0 = exposed high
 SLOPE_STEEP_LO = 30.0  # slope (deg) where the travel penalty starts
 SLOPE_STEEP_HI = 45.0  # slope (deg) at/above which the penalty is full
@@ -70,6 +72,16 @@ DAY_WARM_PCTL = 90.0            # "the warm lowland" percentile for the insect d
 DAY_CALM_PCTL = 10.0            # calmest air (hollows) for the insect driver
 DAY_COLD_PCTL = 10.0            # "the exposed tops" (coldest) for the shelter driver
 DAY_WINDY_PCTL = 90.0           # windiest air (ridges) for the shelter driver
+
+# --- REAL weather field path (the reconstruction) --------------------------------
+# The scorer now consumes a per-cell WeatherField (weather/field.py): real temperature,
+# wind SPEED and DIRECTION, and precipitation interpolated from a live/ERA5 lattice.
+# These constants govern how that real field turns into per-cell exposure and regimes.
+# No fixed lapse rate is applied here — temperature already comes from the data.
+EXPOSURE_SLOPE_FULL_DEG = 20.0  # slope (deg) at which aspect exposure reaches full effect (flat=neutral)
+ASPECT_EXPOSURE_W = 0.5         # directional (slope-aspect vs wind) share of the single exposure channel
+TPI_EXPOSURE_W = 0.5            # landform (TPI ridge/hollow) share of the single exposure channel
+W_WEATHER = 1.0                 # overall strength of the (decoupled) weather-regime term
 
 # --- weather -> pressure ramps ---------------------------------------------------
 # Insect activity climbs with warmth and is suppressed by wind.
@@ -92,6 +104,9 @@ W_BASELINE = 0.3   # gentle always-on pull to high ground [hunter: "mostly 1300 
                    #   (later) disturbance override it - "lower if wind and hunters allow"
 W_DISTURB = 0.6    # disturbance penalty strength [hunter: "lower only if hunters allow"]
 W_FORAGE = 0.4     # additive forage destination value (NIBIO AR50 land cover)
+FORAGE_RELATIVE = False  # IDEA 016: subtract the field-mean forage so the ~constant
+                         #   open-alpine offset (~89% of cells at 0.85) stops
+                         #   compressing the weather signal's dynamic range
 
 # within-regime cell-quality mix (how the per-cell comfort vs terrain shape combine)
 REFUGE_COOL_W, REFUGE_EXPOSE_W = 0.7, 0.3   # insect escape: insect-free air + exposed ground
@@ -165,15 +180,39 @@ def _terrain_norm(elev, tpi):
     return elev_n, tpi_n
 
 
-def score_cells(elev, slope, tpi, w: WeatherDay,
+def exposure_channel(tpi, slope, aspect_deg, wind_dir_deg):
+    """Single per-cell exposure in [−1,+1]: −1 = sheltered/leeward, +1 = exposed/windward.
+
+    Combines TWO real signals through ONE channel (so terrain shape is not double
+    counted — IDEA 015):
+      - landform: TPI (ridge/summit +, hollow −);
+      - directional: slope aspect vs the wind's 'from' direction — a slope facing into
+        the wind is windward (+), the lee side is sheltered (−), scaled by steepness so
+        flat ground is neutral (IDEA 012, the missing physical input).
+    """
+    tpi = np.asarray(tpi, float)
+    slope = np.asarray(slope, float)
+    tpi_signed = np.clip(tpi / WIND_EXPOSURE_TPI_M, -1.0, 1.0)
+    slope_fac = np.clip(slope / EXPOSURE_SLOPE_FULL_DEG, 0.0, 1.0)
+    windward = np.cos(np.radians(np.asarray(aspect_deg, float)
+                                 - np.asarray(wind_dir_deg, float))) * slope_fac
+    return np.clip(TPI_EXPOSURE_W * tpi_signed + ASPECT_EXPOSURE_W * windward, -1.0, 1.0)
+
+
+def score_cells(elev, slope, tpi, w: WeatherDay = None,
                 disturb_dist=None, forage=None,
-                downscale=True, ref_elev=None) -> dict[str, np.ndarray]:
+                downscale=True, ref_elev=None,
+                wfield=None, aspect=None) -> dict[str, np.ndarray]:
     """Score arrays of per-cell terrain attributes for one weather day.
 
-    downscale: if True (default) the area forecast is turned into per-cell temp/wind
-      (lapse rate + terrain exposure); the regime switches come from the field's warm
-      lowland / harsh tops, and each cell's own comfort sets its refuge/shelter value.
-      If False, the legacy area-wide behavior is used (one reading, terrain proxies).
+    wfield: a per-cell WeatherField (weather/field.py) of REAL interpolated weather —
+      temperature, wind speed + DIRECTION, precipitation. When given, this is the
+      primary path: no fixed lapse rate (temperature is data), wind direction drives
+      aspect-aware exposure, and the two regimes are decoupled so they switch instead
+      of co-firing and cancelling (IDEAS 012/013/014). Needs per-cell `aspect` (deg).
+    downscale: legacy fallback when wfield is None — the area forecast `w` is turned
+      into per-cell temp/wind by a fixed lapse rate + TPI exposure. downscale=False is
+      the oldest area-wide behaviour. Kept for the demo and back-compat.
     disturb_dist: optional per-cell distance (m) to nearest disturbance feature;
       when given (and W_DISTURB>0) cells near roads/trails/cabins are penalised.
     forage: optional per-cell forage value 0..1 (AR50); added when W_FORAGE>0.
@@ -186,33 +225,72 @@ def score_cells(elev, slope, tpi, w: WeatherDay,
     tpi = np.asarray(tpi, float)
     elev_n, tpi_n = _terrain_norm(elev, tpi)
 
-    if downscale:
-        temp_c, wind_ms = downscale_weather(w, elev, tpi, ref_elev)
-        # regime switches from the field extremes: insects from the warm lowland,
-        # shelter from the cold/windy exposed tops (any harsh corner grounds them).
-        warm_lowland = float(np.nanpercentile(temp_c, DAY_WARM_PCTL))
-        calm_lowland = float(np.nanpercentile(wind_ms, DAY_CALM_PCTL))
-        cold_tops = float(np.nanpercentile(temp_c, DAY_COLD_PCTL))
-        windy_tops = float(np.nanpercentile(wind_ms, DAY_WINDY_PCTL))
-        p_ins = float(_insect_p(warm_lowland, calm_lowland, w.precip_mm))
-        p_shl = float(_shelter_p(cold_tops, windy_tops, w.precip_mm))
-        # per-cell comfort: are insects active / is it harsh AT this cell?
-        p_ins_cell = _insect_p(temp_c, wind_ms, w.precip_mm)
-        p_shl_cell = _shelter_p(temp_c, wind_ms, w.precip_mm)
-        refuge = REFUGE_COOL_W * (1.0 - p_ins_cell) + REFUGE_EXPOSE_W * tpi_n
-        shelter = SHELTER_CALM_W * (1.0 - p_shl_cell) + SHELTER_LEE_W * (1.0 - tpi_n)
+    if wfield is not None:
+        # ---- REAL per-cell weather field (the reconstruction) -------------------
+        if aspect is None:
+            raise ValueError("wfield path needs per-cell `aspect` (deg)")
+        temp_c = np.asarray(wfield.temp_c, float)
+        wind_amb = np.asarray(wfield.wind_ms, float)       # real ambient wind per cell
+        wind_dir = np.asarray(wfield.wind_dir_deg, float)
+        precip = np.asarray(wfield.precip_mm, float)
+        # one exposure channel from real TPI + real wind direction vs slope aspect
+        expo = exposure_channel(tpi, slope, aspect, wind_dir)
+        expo_n = 0.5 * (expo + 1.0)                          # 0 sheltered .. 1 exposed
+        eff_wind = np.clip(wind_amb * (1.0 + WIND_EXPOSURE_GAIN * expo), 0.0, None)
+        # per-cell comfort from REAL temperature + exposure-adjusted wind
+        p_ins_cell = _insect_p(temp_c, eff_wind, precip)
+        p_shl_cell = _shelter_p(temp_c, eff_wind, precip)
+        refuge = REFUGE_COOL_W * (1.0 - p_ins_cell) + REFUGE_EXPOSE_W * expo_n
+        shelter = SHELTER_CALM_W * (1.0 - p_shl_cell) + SHELTER_LEE_W * (1.0 - expo_n)
+        # DAY-LEVEL drivers from the real field. Insects gate on the AMBIENT (synoptic)
+        # wind — the field median, NOT a guaranteed-calm hollow — so the calm gate is
+        # no longer trivially true (IDEA 013). Shelter reads the harsh tail of the field.
+        area_precip = float(np.nanmean(precip))
+        warm_low = float(np.nanpercentile(temp_c, DAY_WARM_PCTL))
+        amb_wind = float(np.nanmedian(wind_amb))
+        cold_top = float(np.nanpercentile(temp_c, DAY_COLD_PCTL))
+        windy_top = float(np.nanpercentile(eff_wind, DAY_WINDY_PCTL))
+        p_ins = float(_insect_p(warm_low, amb_wind, area_precip))
+        p_shl = float(_shelter_p(cold_top, windy_top, area_precip))
+        # DECOUPLED regime term: a weighted SWITCH between the go-high and go-low
+        # targets (not two independent additive terms that partly cancel). The hunter's
+        # shelter>insect preference sets the blend; `drive` is the overall weather push.
+        wi, ws = W_INSECT * p_ins, W_SHELTER * p_shl
+        r_ins = wi / (wi + ws + 1e-9)
+        regime_target = r_ins * refuge + (1.0 - r_ins) * shelter
+        drive = max(p_ins, p_shl)
+        weather_term = W_WEATHER * drive * regime_target
     else:
-        p_ins = float(_insect_p(w.temp_c, w.wind_ms, w.precip_mm))
-        p_shl = float(_shelter_p(w.temp_c, w.wind_ms, w.precip_mm))
-        refuge = 0.6 * elev_n + 0.4 * tpi_n              # legacy go-high target
-        shelter = 0.6 * (1 - elev_n) + 0.4 * (1 - tpi_n)  # legacy go-low target
+        if w is None:
+            raise ValueError("score_cells needs either wfield or a WeatherDay `w`")
+        if downscale:
+            temp_c, wind_ms = downscale_weather(w, elev, tpi, ref_elev)
+            # regime switches from the field extremes: insects from the warm lowland,
+            # shelter from the cold/windy exposed tops (any harsh corner grounds them).
+            warm_lowland = float(np.nanpercentile(temp_c, DAY_WARM_PCTL))
+            calm_lowland = float(np.nanpercentile(wind_ms, DAY_CALM_PCTL))
+            cold_tops = float(np.nanpercentile(temp_c, DAY_COLD_PCTL))
+            windy_tops = float(np.nanpercentile(wind_ms, DAY_WINDY_PCTL))
+            p_ins = float(_insect_p(warm_lowland, calm_lowland, w.precip_mm))
+            p_shl = float(_shelter_p(cold_tops, windy_tops, w.precip_mm))
+            p_ins_cell = _insect_p(temp_c, wind_ms, w.precip_mm)
+            p_shl_cell = _shelter_p(temp_c, wind_ms, w.precip_mm)
+            refuge = REFUGE_COOL_W * (1.0 - p_ins_cell) + REFUGE_EXPOSE_W * tpi_n
+            shelter = SHELTER_CALM_W * (1.0 - p_shl_cell) + SHELTER_LEE_W * (1.0 - tpi_n)
+        else:
+            p_ins = float(_insect_p(w.temp_c, w.wind_ms, w.precip_mm))
+            p_shl = float(_shelter_p(w.temp_c, w.wind_ms, w.precip_mm))
+            refuge = 0.6 * elev_n + 0.4 * tpi_n              # legacy go-high target
+            shelter = 0.6 * (1 - elev_n) + 0.4 * (1 - tpi_n)  # legacy go-low target
+        weather_term = (W_INSECT * p_ins * refuge) + (W_SHELTER * p_shl * shelter)
 
     baseline = elev_n   # default home-range preference: high ground (hunter: "mostly 1300 m+")
-    base = ((W_BASELINE * baseline)
-            + (W_INSECT * p_ins * refuge)
-            + (W_SHELTER * p_shl * shelter))
+    base = (W_BASELINE * baseline) + weather_term
     if forage is not None and W_FORAGE > 0:
-        base = base + W_FORAGE * np.asarray(forage, float)  # forage destination value
+        fv = np.asarray(forage, float)
+        if FORAGE_RELATIVE:                       # IDEA 016: discriminate, don't offset
+            fv = fv - float(np.nanmean(fv))
+        base = base + W_FORAGE * fv               # forage destination value
     steep = _ramp(slope, SLOPE_STEEP_LO, SLOPE_STEEP_HI)
     raw = base * (1.0 - W_STEEP * steep)
     if disturb_dist is not None and W_DISTURB > 0:

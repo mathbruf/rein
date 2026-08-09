@@ -31,13 +31,10 @@ if hasattr(sys.stdout, "reconfigure"):
 import numpy as np  # noqa: E402
 
 import validate as VAL  # reuse load_grid/resolve_observations/make_smoother/evaluate  # noqa: E402
-import reindeer.model.score as S  # noqa: E402
 from reindeer.model import cv as CV  # noqa: E402
 from reindeer.geocode.gazetteer import load_gazetteer  # noqa: E402
 from reindeer.geocode.positions import load_manual_pins  # noqa: E402
 from reindeer.terrain.grid import load_field_polygons, LORDALEN, DALSIDA  # noqa: E402
-from reindeer.model.score import score_cells  # noqa: E402
-from reindeer.weather.historical import fetch_archive, weather_by_date  # noqa: E402
 from pyproj import Transformer  # noqa: E402
 from shapely.prepared import prep  # noqa: E402
 
@@ -52,32 +49,26 @@ CANDIDATES = [
     ("shipped", {}),
     ("- disturbance penalty", {"W_DISTURB": 0.0}),
     ("- high-ground baseline", {"W_BASELINE": 0.0}),
+    # --- Phase-6 structural candidates (IDEAS 016 + 018), judged out-of-sample ----
+    ("forage relative (016)", {"FORAGE_RELATIVE": True}),
+    ("forage off", {"W_FORAGE": 0.0}),
+    ("aspect-heavy exposure", {"ASPECT_EXPOSURE_W": 0.7, "TPI_EXPOSURE_W": 0.3}),
+    ("tpi-heavy exposure", {"ASPECT_EXPOSURE_W": 0.3, "TPI_EXPOSURE_W": 0.7}),
+    ("colder shelter onset", {"COLD_T_HI": 5.0}),
+    ("rain matters faster", {"WET_MM_FULL": 2.5}),
+    ("gentler aspect saturation", {"EXPOSURE_SLOPE_FULL_DEG": 10.0}),
 ]
 
 
-def per_config_percentiles(overrides, grid, resolved, wx, smooth, radius, weights=None):
+def per_config_percentiles(overrides, grid, resolved, fields, smooth, radius, weights=None):
     """Per-report zone percentile vector under a set of temporary weight overrides.
 
-    weights=None → whole-field background; an array → effort-matched background
-    (IDEA 009 correction, evaluation only).
+    Uses the prebuilt real per-cell weather fields (weather-only, so shared across
+    weight variants). weights=None → whole-field background; an array → effort-matched
+    background (IDEA 009 correction, evaluation only).
     """
-    elev = grid["elevation_m"].to_numpy()
-    slope = grid["slope_deg"].to_numpy()
-    tpi = grid["tpi_m"].to_numpy()
-    disturb = grid["dist_disturb_m"].to_numpy() if "dist_disturb_m" in grid else None
-    forage = grid["forage"].to_numpy() if "forage" in grid else None
-    saved = {k: getattr(S, k) for k in overrides}
-    try:
-        for k, v in overrides.items():
-            setattr(S, k, v)
-        per_date = {}
-        for d in sorted(set(resolved["date"])):
-            per_date[d] = (None if d not in wx else
-                           score_cells(elev, slope, tpi, wx[d],
-                                       disturb_dist=disturb, forage=forage)["score_raw"])
-    finally:
-        for k, v in saved.items():
-            setattr(S, k, v)
+    per_date = {d: (None if fields.get(d) is None else VAL.score_date(grid, fields[d], overrides))
+                for d in sorted(set(resolved["date"]))}
     used, pct, _ = VAL.evaluate(resolved, per_date, smooth, radius, weights=weights)
     return used, np.asarray(pct, float)
 
@@ -90,10 +81,8 @@ def main() -> None:
     inside = prep(polys[LORDALEN].union(polys[DALSIDA]))
 
     resolved = VAL.resolve_observations(grid, gaz, inside, 3000.0, pins=pins)
-    cx, cy = grid["east"].mean(), grid["north"].mean()
-    lon, lat = _to_wgs.transform(cx, cy)
-    archive = fetch_archive(lat, lon, min(resolved["date"]), max(resolved["date"]))
-    wx = weather_by_date(archive)
+    print(f"building real per-cell weather fields for {resolved['date'].nunique()} dates ...")
+    fields = VAL.build_fields(grid, resolved["date"], source="archive")
     smooth = VAL.make_smoother(grid)
     radius = VAL.HEADLINE_RADIUS_M
 
@@ -110,18 +99,25 @@ def main() -> None:
     # per-report percentile matrices over the candidate variants (rows aligned by
     # report), under BOTH the whole-field and the effort-matched backgrounds.
     names = [nm for nm, _ in CANDIDATES]
-    P = np.vstack([per_config_percentiles(ov, grid, resolved, wx, smooth, radius)[1]
-                   for _, ov in CANDIDATES])
-    Pe = (np.vstack([per_config_percentiles(ov, grid, resolved, wx, smooth, radius,
+    used0, p0 = per_config_percentiles({}, grid, resolved, fields, smooth, radius)
+    P = np.vstack([p0] + [per_config_percentiles(ov, grid, resolved, fields, smooth, radius)[1]
+                          for _, ov in CANDIDATES[1:]])
+    Pe = (np.vstack([per_config_percentiles(ov, grid, resolved, fields, smooth, radius,
                                             weights=weights)[1]
                      for _, ov in CANDIDATES]) if weights is not None else P)
     n = P.shape[1]
+    # positional confidence (reporter-error correction): bare at-landmark reports are
+    # name-only (the geocoder locates the feature, not the herd) -> excluded from the
+    # PRIMARY gate, which is effort-matched + position-confident.
+    conf = used0["method"].map(VAL.position_confident).to_numpy()
 
     k = 5
     base = CV.repeated_kfold_stats(P[0], k=k)
     sel = CV.cv_select_evaluate(P, k=k)
     base_e = CV.repeated_kfold_stats(Pe[0], k=k)
     sel_e = CV.cv_select_evaluate(Pe, k=k)
+    base_c = CV.repeated_kfold_stats(Pe[0][conf], k=k)
+    sel_c = CV.cv_select_evaluate(Pe[:, conf], k=k)
 
     lines = [
         "# Phase 6 — Cross-validation report",
@@ -187,8 +183,24 @@ def main() -> None:
         f"{sel['select_frac'][1]*100:.0f}% (whole-field) to "
         f"{sel_e['select_frac'][1]*100:.0f}% (effort-matched), and the selection Δ from "
         f"{sel['select_mean']-sel['baseline_mean']:+.3f} to "
-        f"{sel_e['select_mean']-sel_e['baseline_mean']:+.3f}. From here, structural fixes "
-        "(012–018) are judged against the **effort-matched** baseline.",
+        f"{sel_e['select_mean']-sel_e['baseline_mean']:+.3f}.",
+        "",
+        "## Position-confident tier (reporter-error correction) — THE PRIMARY GATE",
+        f"Bare `at-landmark` reports ({int((~conf).sum())} of {n}) are **name-only**: the "
+        "geocoder can only place the herd ON the named feature (a valley/lake — the names "
+        "that resolve), while the report says 'i området X' — the animals were on the ground "
+        "around it. Those reports measure reporter/geocoder error, not the model, so the "
+        "primary gate is **effort-matched + position-confident** (human-pinned or "
+        "direction-resolved positions only):",
+        "",
+        f"- **Primary gate baseline (shipped): {base_c['mean']:.3f} ± {base_c['std']:.3f}**; "
+        f"folds beating chance **{base_c['fold_beats_chance']*100:.0f}%** "
+        f"(n={int(conf.sum())} confident reports).",
+        f"- Select-then-evaluate on this tier: selection {sel_c['select_mean']:.3f} vs "
+        f"baseline {sel_c['baseline_mean']:.3f} (Δ {sel_c['select_mean']-sel_c['baseline_mean']:+.3f}).",
+        "- The vague tier is not discarded — it is reported separately in "
+        "`docs/validation_report.md` and shrinks as the human pins those areas. From here, "
+        "structural fixes (016–018) are judged against **this** baseline.",
         "",
         "## How Phase-6 fixes use this harness",
         "Each structural fix (IDEAS 012–018) is added to `CANDIDATES` in "
@@ -210,6 +222,9 @@ def main() -> None:
     print(f"[effort-match] select {sel_e['select_mean']:.3f} vs baseline "
           f"{sel_e['baseline_mean']:.3f} (Δ {sel_e['select_mean']-sel_e['baseline_mean']:+.3f}) "
           f"| disturb-off selected {sel_e['select_frac'][1]*100:.0f}%")
+    print(f"[PRIMARY GATE: effort-match + position-confident, n={int(conf.sum())}] "
+          f"CV baseline {base_c['mean']:.3f} ± {base_c['std']:.3f} "
+          f"| folds>chance {base_c['fold_beats_chance']*100:.0f}%")
     print(f"-> {REPORT}")
 
 

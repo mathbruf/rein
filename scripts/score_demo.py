@@ -18,6 +18,7 @@ sys.path.insert(0, str(_ROOT / "src"))
 import pandas as pd  # noqa: E402
 
 from reindeer.model.score import WeatherDay, score_cells  # noqa: E402
+from reindeer.paths import outdir  # noqa: E402
 
 PROCESSED = _ROOT / "data" / "processed"
 
@@ -53,7 +54,7 @@ def main() -> None:
         if disturb is not None:
             out["dist_disturb_m"] = disturb.to_numpy()
         out["score"] = res["score"]
-        out.to_csv(PROCESSED / f"score_{name}.csv", index=False, encoding="utf-8")
+        out.to_csv(outdir("demo") / f"{name}.csv", index=False, encoding="utf-8")
 
         top = out.nlargest(max(1, len(out) // 5), "score")   # top 20%
         print(f"[{name}]  temp={w.temp_c}C wind={w.wind_ms}m/s precip={w.precip_mm}mm")
@@ -63,7 +64,7 @@ def main() -> None:
                 f"(field {out.dist_disturb_m.mean():.0f})") if disturb is not None else ""
         print(f"   top-20% cells: mean elev={top.elevation_m.mean():6.0f} m  "
               f"mean TPI={top.tpi_m.mean():+5.0f} m{dtxt}")
-        print(f"   -> data/processed/score_{name}.csv\n")
+        print(f"   -> output/demo/{name}.csv\n")
 
 
 if __name__ == "__main__":

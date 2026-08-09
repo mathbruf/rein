@@ -27,7 +27,6 @@ Landmarks with no SSR hit within the radius (manual review):
   1  Breidalseggje          [needs_review] (weak candidate: Skarvedalseggen)
   1  Bråtådalføret          [not_found]
   1  Dyringshøe             [needs_review] (weak candidate: Fellingshøi)
-  1  Døkte                  [needs_review] (weak candidate: Døktahytta)
   1  Einstulkampen          [needs_review] (weak candidate: Kampen)
   1  Gjerdingshøe           [needs_review] (weak candidate: Fellingshøi)
   1  Grjothøa               [needs_review] (weak candidate: Gråhøe)
@@ -56,6 +55,7 @@ Landmarks with no SSR hit within the radius (manual review):
   1  Steinflya              [needs_review] (weak candidate: Steinbotnen)
   1  Storvassområdet        [needs_review] (weak candidate: Storvassbue)
   1  Svaåfjellet            [needs_review] (weak candidate: Tverrfjellet)
+  1  Søre Døkte             [needs_review] (weak candidate: Søre Djupdalen)
   1  Vassvendeggje          [needs_review] (weak candidate: Vassveite)
   1  Viahøe                 [not_found]
   1  Viergrove              [needs_review] (weak candidate: Grove)

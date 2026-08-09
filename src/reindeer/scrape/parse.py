@@ -28,11 +28,24 @@ _COUNT_RE = re.compile(
     r"(\d+)?\s*(\w*(?:dyr|flokk|bukk|simle|kalv|kviger|kyr)\w*)\b",
     re.I,
 )
+# Direction-adjective PREFIXES of compound place names (IDEA 020): "Nørdre Dalen",
+# "Nordre Vigga", "Søre Kjølhaugen" are single names — parsing the adjective alone as
+# a "landmark" plants the herd at a word that geocodes to nothing (or the wrong thing).
+# A prefix followed by a capitalised word is joined into one compound landmark; the
+# bare adjectives are also blocked as standalone landmarks (see _NOT_PLACE).
+_NAME_PREFIX = (r"(?:Nordre|Nørdre|Søre|Søndre|Sørre|Øvre|Nedre|Store|Vesle|"
+                r"Austre|Vestre|Ytre|Indre|Midtre)")
+# One landmark token: optional direction-adjective prefix + capitalised word, with
+# optional /-joined alternatives ("Nørdre Dalen/Skurveosen").
+_LM_TOKEN = (_NAME_PREFIX + r"?\s*[A-ZÆØÅ][\wæøåÆØÅ]+"
+             r"(?:/(?:" + _NAME_PREFIX + r"\s+)?[A-ZÆØÅ][\wæøåÆØÅ]+)*")
+
 # Direction phrase: optional bearing + a spatial relation + the landmark token.
 _DIR_RE = re.compile(
     r"((?:nord|sør|aust|vest|nordaust|nordvest|søraust|sørvest)(?:over)?)?\s*"
     r"\b(for|frå|fra|mot|innanfor|innan|i området|sør for|nord for|aust for|vest for|ved|over)\s+"
-    r"([A-ZÆØÅ][\wæøåÆØÅ]+(?:/[A-ZÆØÅ][\wæøåÆØÅ]+)*)",
+    r"((?:" + _NAME_PREFIX + r"\s+)?[A-ZÆØÅ][\wæøåÆØÅ]+"
+    r"(?:/(?:" + _NAME_PREFIX + r"\s+)?[A-ZÆØÅ][\wæøåÆØÅ]+)*)",
     re.I,
 )
 # Capitalised tokens that are NOT place names (sentence openers / quantity words).
@@ -44,6 +57,10 @@ _NOT_PLACE = {
     # not place names: "scattered", "from", directions used as sentence openers
     "Spredt", "Spredte", "Spreidd", "Spreidde", "Frå", "Fra", "Nord", "Sør",
     "Aust", "Vest", "Nordaust", "Nordvest", "Søraust", "Sørvest",
+    # direction-adjective prefixes (IDEA 020): only valid as part of a compound
+    # name ("Nørdre Dalen"), never as a standalone landmark
+    "Nordre", "Nørdre", "Søre", "Søndre", "Sørre", "Øvre", "Nedre", "Vesle",
+    "Austre", "Vestre", "Ytre", "Indre", "Midtre",
     # område / region names — not pinpoint landmarks
     "Reinheimen", "Breheimen", "Reinheimen-Breheimen",
 }
@@ -80,20 +97,30 @@ def _count(sentence: str) -> dict | None:
     }
 
 
+_TOKEN_RE = re.compile(r"(?:" + _NAME_PREFIX + r"\s+)?[A-ZÆØÅ][\wæøåÆØÅ]+"
+                       r"(?:/(?:" + _NAME_PREFIX + r"\s+)?[A-ZÆØÅ][\wæøåÆØÅ]+)*")
+
+
+def _clean_name(name: str) -> str:
+    return re.sub(r"\s+", " ", name.strip())
+
+
 def _landmarks(sentence: str, dir_hints: list[dict]) -> list[str]:
     """Real place names: those captured by direction phrases, plus other capitalised
-    tokens that aren't sentence-initial and aren't known non-places."""
+    tokens that aren't sentence-initial and aren't known non-places. Compound names
+    with a direction-adjective prefix ("Nørdre Dalen") are kept whole (IDEA 020)."""
     out: list[str] = []
     for d in dir_hints:
         for part in d["landmark"].split("/"):
-            if part not in out:
+            part = _clean_name(part)
+            if part and part not in _NOT_PLACE and part not in out:
                 out.append(part)
-    tokens = re.findall(r"[A-ZÆØÅ][\wæøåÆØÅ]+(?:/[A-ZÆØÅ][\wæøåÆØÅ]+)*", sentence)
-    for i, tok in enumerate(tokens):
-        for part in tok.split("/"):
+    for i, m in enumerate(_TOKEN_RE.finditer(sentence)):
+        for part in m.group(0).split("/"):
+            part = _clean_name(part)
             if i == 0 and sentence.startswith(part):
                 continue  # sentence opener, e.g. "Minimum", "Fleire"
-            if part in _NOT_PLACE or part in out:
+            if not part or part in _NOT_PLACE or part in out:
                 continue
             out.append(part)
     return out
@@ -105,6 +132,7 @@ def _directions(sentence: str) -> list[dict]:
     # capitalised, non-stopword landmark.
     out = []
     for (b, rel, lm) in _DIR_RE.findall(sentence):
+        lm = _clean_name(lm)
         head = lm.split("/")[0]
         if not head[:1].isupper() or head in _NOT_PLACE:
             continue

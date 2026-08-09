@@ -22,9 +22,11 @@ API = "https://api.kartverket.no/stedsnavn/v1/navn"
 USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research)"
 OUT_EPSG = 25832
 
-# Lordalen valley representation point (SSR), our regional anchor in EPSG:25832.
-LORDALEN_ANCHOR = (474445.22856, 6884302.14348)
-DEFAULT_RADIUS_KM = 30.0
+from reindeer.area import AREA
+
+# Regional anchor + disambiguation radius come from config/area.json.
+LORDALEN_ANCHOR = AREA.anchor
+DEFAULT_RADIUS_KM = AREA.gazetteer_radius_km
 DEFAULT_DELAY = 0.6  # be gentle with the API
 
 _ROOT = Path(__file__).resolve().parents[3]

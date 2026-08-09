@@ -37,6 +37,18 @@ def slope_deg(Z: np.ndarray, res: float) -> np.ndarray:
     return np.degrees(np.arctan(np.hypot(gx, gy)))
 
 
+def aspect_deg(Z: np.ndarray, res: float) -> np.ndarray:
+    """Compass azimuth (deg, 0=N, 90=E) the slope FACES, i.e. the downhill direction.
+
+    For a north-up raster, row increases southward, so dNorth = -gy. The downhill
+    (East, North) vector is (-gx, +gy); its azimuth clockwise from north is
+    atan2(East, North). A cell whose aspect ≈ the wind's 'from' direction is windward
+    (exposed); one facing away is leeward. Flat cells are meaningless here (slope≈0).
+    """
+    gy, gx = np.gradient(Z, res, res)
+    return np.degrees(np.arctan2(-gx, gy)) % 360.0
+
+
 def _box_mean(Z: np.ndarray, valid: np.ndarray, win: int) -> np.ndarray:
     """Mean of valid pixels in a (win x win) window, via an integral image.
     Border windows are shrunk to the available pixels (divide by actual count)."""
@@ -66,11 +78,13 @@ def tpi(Z: np.ndarray, valid: np.ndarray, res: float, window_m: float = 1000.0) 
 
 def sample_to_grid(east: np.ndarray, north: np.ndarray,
                    Z: np.ndarray, slope: np.ndarray, tpi_r: np.ndarray,
-                   transform, block_px: int = 5) -> dict[str, np.ndarray]:
+                   transform, aspect_r: np.ndarray | None = None,
+                   block_px: int = 5) -> dict[str, np.ndarray]:
     """Sample terrain onto cells. east/north are EPSG:25832 cell centroids.
 
     Per cell: mean elevation/slope and std-elevation (ruggedness) over the
-    block_px x block_px DTM window covering the 250 m cell; tpi at the centroid.
+    block_px x block_px DTM window covering the 250 m cell; tpi and aspect at the
+    centroid (aspect is circular, so it is sampled point-wise, not block-averaged).
     """
     X, Y = _to_dem.transform(east, north)
     rows, cols = rowcol(transform, X, Y)
@@ -83,6 +97,7 @@ def sample_to_grid(east: np.ndarray, north: np.ndarray,
     slp = np.full(n, np.nan)
     rug = np.full(n, np.nan)
     tp = np.full(n, np.nan)
+    asp = np.full(n, np.nan)
     for i in range(n):
         r, c = int(rows[i]), int(cols[i])
         if not (0 <= r < H and 0 <= c < Wd):
@@ -96,5 +111,10 @@ def sample_to_grid(east: np.ndarray, north: np.ndarray,
         rug[i] = np.nanstd(blk)
         slp[i] = np.nanmean(slope[r0:r1, c0:c1])
         tp[i] = tpi_r[r, c]
-    return {"elevation_m": elev, "slope_deg": slp,
-            "ruggedness_m": rug, "tpi_m": tp}
+        if aspect_r is not None:
+            asp[i] = aspect_r[r, c]
+    out = {"elevation_m": elev, "slope_deg": slp,
+           "ruggedness_m": rug, "tpi_m": tp}
+    if aspect_r is not None:
+        out["aspect_deg"] = asp
+    return out

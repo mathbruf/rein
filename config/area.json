@@ -1,0 +1,33 @@
+{
+  "_comment": "Study-area configuration (see docs/expansion_plan.md). Swap this file (or point REINDEER_AREA_CONFIG at another) to port the pipeline to a new area. All coordinates in the projected CRS below.",
+
+  "name": "Lordalen",
+  "region": "Reinheimen villreinomrade, Lesja, Innlandet, Norway",
+  "crs_epsg": 25832,
+  "cell_size_m": 250,
+
+  "boundary_kml": "data/reference/lesja_lordalen_dalsida_area.kml",
+  "primary_field": "Lordalen Statsallmenning",
+  "buffer_field": "Dalsida Statsallmenning",
+
+  "anchor_east": 474445.22856,
+  "anchor_north": 6884302.14348,
+  "gazetteer_radius_km": 30.0,
+
+  "elev_lo_m": 1000.0,
+  "elev_hi_m": 1900.0,
+
+  "weather_lattice_forecast_m": 4000.0,
+  "weather_lattice_archive_m": 12000.0,
+
+  "dem_epsg": 25833,
+  "sources": {
+    "sightings": "https://villreinutvalet.no/jaktinfo (area-specific scraper: src/reindeer/scrape)",
+    "placenames": "Kartverket SSR (Norway-wide)",
+    "dem": "Kartverket WCS nhm_dtm_topo_25833 (Norway-wide)",
+    "landcover": "NIBIO AR50 WFS (Norway-wide)",
+    "disturbance": "OSM Overpass (worldwide) + fjellstyre KML cabins (area-specific)",
+    "weather_forecast": "Open-Meteo metno_nordic (Nordic) -> use best regional model elsewhere",
+    "weather_archive": "Open-Meteo ERA5 (worldwide)"
+  }
+}

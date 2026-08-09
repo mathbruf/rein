@@ -64,6 +64,79 @@ def load_kml_disturbance(path: Path = KML,
     return geoms
 
 
+# Feature categories for MAP DISPLAY (viz/render.py): the same cached data, but
+# kept apart so roads, tracks, trails and cabins can be drawn distinctly. Purely
+# for orientation on the rendered map; the disturbance *layer* above is unchanged.
+_ROAD_MAJOR = {"trunk", "primary", "secondary", "tertiary"}
+_ROAD_MINOR = {"unclassified", "residential", "service", "raceway"}
+_TRACK = {"track"}
+_PATH = {"path", "footway", "bridleway", "cycleway", "steps"}
+_HUT_TAGS = {"alpine_hut", "wilderness_hut", "chalet", "camp_site", "cabin", "hut"}
+
+
+def load_overlay_features(osm_path: Path = OSM_JSON, kml_path: Path = KML) -> dict:
+    """Categorised human features for drawing on the map (EPSG:25832).
+
+    Returns {'road_major': [LineString], 'road_minor': [...], 'track': [...],
+             'path': [...], 'cabin': [(Point, name|None)], 'parking': [(Point,
+             name|None)]}. Points carry their name (OSM `name` tag / KML placemark
+    name) so the renderer can label the important trailheads and cabins.
+    Building/parking outlines collapse to centroid points (they are markers on a
+    field-scale map). Missing source files simply yield empty lists.
+    """
+    out = {"road_major": [], "road_minor": [], "track": [], "path": [],
+           "cabin": [], "parking": []}
+    p = Path(osm_path)
+    if p.exists():
+        d = json.loads(p.read_text(encoding="utf-8"))
+        for e in d.get("elements", []):
+            t = e.get("tags", {})
+            hw = t.get("highway")
+            name = t.get("name")
+            hutish = (t.get("tourism") in _HUT_TAGS or t.get("building") in _HUT_TAGS
+                      or t.get("amenity") == "shelter")
+            parking = t.get("amenity") == "parking"
+            if e.get("type") == "node" and "lat" in e:
+                pt = Point(_to32.transform(e["lon"], e["lat"]))
+                if hutish:
+                    out["cabin"].append((pt, name))
+                elif parking:
+                    out["parking"].append((pt, name))
+            elif e.get("type") == "way" and e.get("geometry"):
+                coords = [_to32.transform(q["lon"], q["lat"]) for q in e["geometry"]]
+                if len(coords) < 2:
+                    continue
+                line = LineString(coords)
+                if hw in _ROAD_MAJOR:
+                    out["road_major"].append(line)
+                elif hw in _ROAD_MINOR:
+                    out["road_minor"].append(line)
+                elif hw in _TRACK:
+                    out["track"].append(line)
+                elif hw in _PATH:
+                    out["path"].append(line)
+                elif hutish:
+                    out["cabin"].append((line.centroid, name))
+                elif parking:
+                    out["parking"].append((line.centroid, name))
+    kp = Path(kml_path)
+    if kp.exists():
+        tree = ET.parse(kp)
+        for folder in tree.iter(f"{_KML_NS}Folder"):
+            nm = folder.find(f"{_KML_NS}name")
+            if nm is None or nm.text not in ("Hytter", "Camping"):
+                continue
+            for pm in folder.findall(f".//{_KML_NS}Placemark"):
+                c = pm.find(f".//{_KML_NS}Point/{_KML_NS}coordinates")
+                if c is None or not c.text:
+                    continue
+                lon, lat, *_ = c.text.strip().split(",")
+                pname = pm.find(f"{_KML_NS}name")
+                out["cabin"].append((Point(_to32.transform(float(lon), float(lat))),
+                                     pname.text if pname is not None else None))
+    return out
+
+
 def nearest_distance(east, north, geoms) -> np.ndarray:
     """Distance (m) from each (east, north) cell centroid to the nearest geom."""
     tree = STRtree(geoms)

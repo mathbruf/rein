@@ -29,12 +29,20 @@ MANUAL_PINS_CSV = _ROOT / "data" / "gazetteer" / "manual_positions.csv"
 _to_utm = Transformer.from_crs(4326, 25832, always_xy=True)
 
 
+# Words the human writes in real_lat/real_lon to CONFIRM the assumed position is
+# correct (2026-08-09: "alright" rows were being silently discarded — a confirmed
+# position is a pin at the assumed coordinates, not a blank).
+_CONFIRM_WORDS = {"alright", "ok", "okay", "good", "correct", "ja", "riktig", "stemmer"}
+
+
 def load_manual_pins(path: Path = MANUAL_PINS_CSV) -> dict:
     """Human-pinned real positions, keyed (landmark.lower(), method) -> (east, north).
 
     The template has assumed_lat/lon (mine) and real_lat/real_lon (yours, blank until
-    filled). Only rows with both real_lat and real_lon set are used. A method of 'any'
-    matches every method for that landmark.
+    filled). Rows are used when real_lat/real_lon hold coordinates, OR when they hold
+    a confirmation word ('alright', 'ok', ...) — that pins the row at the *assumed*
+    position the human just confirmed. 'unsure' and other notes stay unpinned. A
+    method of 'any' matches every method for that landmark.
     """
     pins: dict = {}
     p = Path(path)
@@ -43,10 +51,17 @@ def load_manual_pins(path: Path = MANUAL_PINS_CSV) -> dict:
     with p.open(encoding="utf-8") as f:
         for row in csv.DictReader(f):
             rlat, rlon = (row.get("real_lat") or "").strip(), (row.get("real_lon") or "").strip()
-            try:                       # skip blanks and notes like 'unsure'/'alright'
+            try:
                 lat, lon = float(rlat), float(rlon)
             except ValueError:
-                continue
+                if rlat.lower() in _CONFIRM_WORDS:   # human confirmed the assumed spot
+                    try:
+                        lat = float((row.get("assumed_lat") or "").strip())
+                        lon = float((row.get("assumed_lon") or "").strip())
+                    except ValueError:
+                        continue
+                else:                                # blank / 'unsure' / free-text note
+                    continue
             east, north = _to_utm.transform(lon, lat)
             pins[(row["landmark"].lower(), (row.get("method") or "any").strip() or "any")] = (east, north)
     return pins

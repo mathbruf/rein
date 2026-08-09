@@ -34,11 +34,12 @@ def main() -> None:
     Z, valid, transform, res = T.load_dtm(dtm)
     print(f"DTM loaded: {Z.shape} @ {res:.1f} m")
     slope = T.slope_deg(Z, res)
+    aspect = T.aspect_deg(Z, res)
     tpi_r = T.tpi(Z, valid, res, window_m=1000.0)
 
     grid = pd.read_csv(GRID_CSV)
     attrs = T.sample_to_grid(grid["east"].to_numpy(), grid["north"].to_numpy(),
-                             Z, slope, tpi_r, transform)
+                             Z, slope, tpi_r, transform, aspect_r=aspect)
 
     out = grid[["cell_id", "east", "north"]].copy()
     for k, v in attrs.items():
@@ -48,7 +49,7 @@ def main() -> None:
     n = len(out)
     miss = int(out["elevation_m"].isna().sum())
     print(f"Terrain -> {OUT}  ({n} cells, {miss} without DTM coverage)")
-    for col in ("elevation_m", "slope_deg", "ruggedness_m", "tpi_m"):
+    for col in ("elevation_m", "slope_deg", "ruggedness_m", "tpi_m", "aspect_deg"):
         s = out[col]
         print(f"  {col:13s} min/mean/max = "
               f"{s.min():8.1f} / {s.mean():8.1f} / {s.max():8.1f}")

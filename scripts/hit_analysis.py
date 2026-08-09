@@ -33,15 +33,16 @@ from reindeer.geocode.gazetteer import load_gazetteer  # noqa: E402
 from reindeer.geocode.positions import load_manual_pins  # noqa: E402
 from reindeer.terrain.grid import load_field_polygons, LORDALEN, DALSIDA  # noqa: E402
 from reindeer.model.validation import effort_weights  # noqa: E402
-from reindeer.weather.historical import fetch_archive, weather_by_date  # noqa: E402
+from reindeer.paths import outdir  # noqa: E402
 from pyproj import Transformer  # noqa: E402
 from shapely.prepared import prep  # noqa: E402
 
 _to_wgs = Transformer.from_crs(25832, 4326, always_xy=True)
 
-# validated colourblind-safe palette (dataviz skill): blue vs orange, neutral chance.
-C_FAIR = "#2a78d6"      # effort-matched (fair) — headline
+# validated colourblind-safe palette (dataviz skill): blue vs orange vs teal, neutral chance.
+C_FAIR = "#2a78d6"      # effort-matched (fair), all reports
 C_RAW = "#eb6834"       # whole-field (effort-confounded)
+C_KIND = "#1b9e77"      # effort-matched + position-confident reports — the headline
 INK = "#0b0b0b"
 INK2 = "#52514e"
 GRIDC = "#e6e5e1"
@@ -54,7 +55,7 @@ def gain_curve(pct, qs):
 
 
 def main() -> None:
-    out = Path(sys.argv[1]) if len(sys.argv) > 1 else _ROOT / "data" / "processed" / "maps" / "hit_analysis.png"
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else outdir("analysis") / "hit_analysis.png"
 
     grid = VAL.load_grid()
     gaz = load_gazetteer()
@@ -62,9 +63,8 @@ def main() -> None:
     polys = load_field_polygons()
     inside = prep(polys[LORDALEN].union(polys[DALSIDA]))
     resolved = VAL.resolve_observations(grid, gaz, inside, 3000.0, pins=pins)
-    cx, cy = grid["east"].mean(), grid["north"].mean()
-    lon, lat = _to_wgs.transform(cx, cy)
-    wx = weather_by_date(fetch_archive(lat, lon, min(resolved["date"]), max(resolved["date"])))
+    print(f"building real per-cell weather fields for {resolved['date'].nunique()} dates ...")
+    fields = VAL.build_fields(grid, resolved["date"], source="archive")
     smooth = VAL.make_smoother(grid)
     radius = VAL.HEADLINE_RADIUS_M
 
@@ -72,9 +72,13 @@ def main() -> None:
     obs_dist = cell_dist[resolved["cell_idx"].to_numpy()]
     weights = effort_weights(cell_dist, obs_dist)
 
-    _, p_raw = per_config_percentiles({}, grid, resolved, wx, smooth, radius)
-    _, p_fair = per_config_percentiles({}, grid, resolved, wx, smooth, radius, weights=weights)
+    used0, p_raw = per_config_percentiles({}, grid, resolved, fields, smooth, radius)
+    _, p_fair = per_config_percentiles({}, grid, resolved, fields, smooth, radius, weights=weights)
     n = len(p_raw)
+    # position-confident tier (reporter-error correction): drop the name-only
+    # at-landmark placements that locate the feature, not the herd.
+    conf = used0["method"].map(VAL.position_confident).to_numpy()
+    p_kind = p_fair[conf]
 
     # --- headline thresholds (share of reports in the model's top X) --------------
     thr = [("Favoured\nhalf", 0.50), ("Top\nthird", 1 / 3),
@@ -83,6 +87,7 @@ def main() -> None:
     chance = np.array([t[1] for t in thr])
     hit_raw = np.array([(p_raw >= 1 - q).mean() for _, q in thr])
     hit_fair = np.array([(p_fair >= 1 - q).mean() for _, q in thr])
+    hit_kind = np.array([(p_kind >= 1 - q).mean() for _, q in thr])
 
     import matplotlib
     matplotlib.use("Agg")
@@ -101,13 +106,15 @@ def main() -> None:
              fontsize=17, fontweight="bold", ha="left", color=INK)
     fig.text(0.065, 0.905,
              f"{n} held-out sightings · date-matched · 2.5 km zone.  “Effort-matched” "
-             "reweights the background to where\nreports actually occur, correcting the "
-             "reporting bias toward accessible ground (IDEA 009).",
+             "reweights the background to where reports actually\noccur (IDEA 009); "
+             "“confident positions” further drops name-only landmark placements that "
+             "locate the feature, not the herd.",
              fontsize=10, ha="left", va="top", color=INK2, linespacing=1.4)
     fig.text(0.065, 0.085,
-             "Read: whole-field hugs the chance diagonal (the effort confound masks the "
-             "signal); the effort-matched curve stands clearly\nabove chance — the scorer "
-             "does narrow the search once reporting bias is removed. Small sample (n=37).",
+             "Read: whole-field hugs the chance diagonal (effort confound); correcting for "
+             "reporting bias and for reporter position error lifts the\ncurve well above "
+             f"chance — the scorer does narrow the search where the reports can be trusted. "
+             f"Small sample (n={n}; {int(conf.sum())} confident).",
              fontsize=9, ha="left", va="top", color=INK2, linespacing=1.4)
 
     # --- Panel A: cumulative gain curve ------------------------------------------
@@ -115,8 +122,11 @@ def main() -> None:
     axA.plot([0, 1], [0, 1], ls="--", lw=1.6, color=INK2, zorder=1)
     axA.text(0.62, 0.55, "chance", rotation=34, color=INK2, fontsize=10,
              ha="center", va="bottom")
+    axA.plot(qs, gain_curve(p_kind, qs), lw=3.0, color=C_KIND, zorder=4,
+             solid_capstyle="round",
+             label=f"effort-matched + confident positions (AUC {p_kind.mean():.2f})")
     axA.plot(qs, gain_curve(p_fair, qs), lw=2.8, color=C_FAIR, zorder=3,
-             solid_capstyle="round", label=f"effort-matched (AUC {p_fair.mean():.2f})")
+             solid_capstyle="round", label=f"effort-matched, all reports (AUC {p_fair.mean():.2f})")
     axA.plot(qs, gain_curve(p_raw, qs), lw=2.6, color=C_RAW, zorder=2,
              solid_capstyle="round", label=f"whole-field (AUC {p_raw.mean():.2f})")
     axA.legend(loc="upper left", frameon=False, fontsize=10.5,
@@ -133,26 +143,28 @@ def main() -> None:
                   fontsize=11, color=INK2, loc="left", pad=8)
 
     # --- Panel B: hit-% at headline thresholds -----------------------------------
-    x = np.arange(len(labels)); w = 0.38
-    axB.bar(x - w / 2, hit_raw * 100, w, color=C_RAW, label="whole-field (confounded)",
+    x = np.arange(len(labels)); w = 0.26
+    axB.bar(x - w, hit_raw * 100, w, color=C_RAW, label="whole-field (confounded)",
             zorder=2)
-    axB.bar(x + w / 2, hit_fair * 100, w, color=C_FAIR, label="effort-matched (fair)",
+    axB.bar(x, hit_fair * 100, w, color=C_FAIR, label="effort-matched, all reports",
             zorder=2)
+    axB.bar(x + w, hit_kind * 100, w, color=C_KIND,
+            label="effort-matched + confident positions", zorder=2)
     # chance reference per group
     for xi, ch in zip(x, chance):
-        axB.plot([xi - w, xi + w], [ch * 100, ch * 100], ls="--", lw=1.6,
+        axB.plot([xi - 1.5 * w, xi + 1.5 * w], [ch * 100, ch * 100], ls="--", lw=1.6,
                  color=INK2, zorder=3)
     axB.text(len(labels) - 0.5, chance[-1] * 100 + 1.5, "chance", color=INK2,
              fontsize=9.5, ha="right", va="bottom")
-    for xi, v in zip(x - w / 2, hit_raw * 100):
-        axB.text(xi, v + 1.2, f"{v:.0f}", ha="center", va="bottom", color=C_RAW,
-                 fontsize=9.5, fontweight="bold")
-    for xi, v in zip(x + w / 2, hit_fair * 100):
-        axB.text(xi, v + 1.2, f"{v:.0f}", ha="center", va="bottom", color=C_FAIR,
-                 fontsize=9.5, fontweight="bold")
+    for xs, vals, col in ((x - w, hit_raw, C_RAW), (x, hit_fair, C_FAIR),
+                          (x + w, hit_kind, C_KIND)):
+        for xi, v in zip(xs, vals * 100):
+            axB.text(xi, v + 1.2, f"{v:.0f}", ha="center", va="bottom", color=col,
+                     fontsize=9, fontweight="bold")
     axB.set_xticks(x); axB.set_xticklabels(labels, fontsize=10)
     axB.set_ylabel("% of sightings in that band")
-    axB.set_ylim(0, max((hit_fair * 100).max(), (hit_raw * 100).max(), 60) + 10)
+    axB.set_ylim(0, max((hit_kind * 100).max(), (hit_fair * 100).max(),
+                        (hit_raw * 100).max(), 60) + 10)
     axB.yaxis.set_major_formatter(lambda v, _: f"{v:.0f}%")
     axB.grid(True, axis="y", color=GRIDC, lw=0.8)
     for s in ("top", "right"):
@@ -168,6 +180,9 @@ def main() -> None:
           f"top20 {(p_raw>=0.8).mean()*100:.0f}% top10 {(p_raw>=0.9).mean()*100:.0f}%")
     print(f"effort-match AUC {p_fair.mean():.3f} | half {(p_fair>=0.5).mean()*100:.0f}% "
           f"top20 {(p_fair>=0.8).mean()*100:.0f}% top10 {(p_fair>=0.9).mean()*100:.0f}%")
+    print(f"kind (conf.) AUC {p_kind.mean():.3f} | half {(p_kind>=0.5).mean()*100:.0f}% "
+          f"top20 {(p_kind>=0.8).mean()*100:.0f}% top10 {(p_kind>=0.9).mean()*100:.0f}% "
+          f"(n={len(p_kind)})")
     print(f"-> {out}")
 
 

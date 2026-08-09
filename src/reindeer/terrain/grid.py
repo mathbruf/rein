@@ -24,15 +24,16 @@ from pyproj import Transformer
 from shapely.geometry import Polygon, Point
 from shapely.prepared import prep
 
-OUT_EPSG = 25832
-CELL_SIZE_M = 250
+from reindeer.area import AREA
 
-_ROOT = Path(__file__).resolve().parents[3]
-KML_PATH = _ROOT / "data" / "reference" / "lesja_lordalen_dalsida_area.kml"
+# All area-specific values come from config/area.json (the expansion seam).
+OUT_EPSG = AREA.crs_epsg
+CELL_SIZE_M = AREA.cell_size_m
+KML_PATH = AREA.boundary_kml
 
 _KML_NS = "{http://www.opengis.net/kml/2.2}"
-LORDALEN = "Lordalen Statsallmenning"
-DALSIDA = "Dalsida Statsallmenning"
+LORDALEN = AREA.primary_field   # historical names kept for existing callers
+DALSIDA = AREA.buffer_field
 
 # WGS84 (KML) -> ETRS89 / UTM 32N. always_xy keeps lon,lat / east,north order.
 _to_utm = Transformer.from_crs(4326, OUT_EPSG, always_xy=True)

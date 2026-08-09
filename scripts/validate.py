@@ -39,9 +39,52 @@ from reindeer.terrain.terrain import _box_mean  # noqa: E402
 from reindeer.terrain.grid import CELL_SIZE_M  # noqa: E402
 
 HEADLINE_RADIUS_M = 2500   # reports name a large area ("nord for X"), not a point
-from reindeer.weather.historical import fetch_archive, weather_by_date  # noqa: E402
+
+# Positional confidence (2026-08-09, human direction: be fair to reporter error).
+# 'at-landmark' reports are NAME-ONLY: the geocoder can only place the herd ON the
+# named feature (usually a valley/lake — the only names that resolve), while the
+# report says "i området X" — the animals were on the ground AROUND it. Scoring the
+# model at the feature point measures the reporter/geocoder error, not the model.
+# Confident = human-pinned or direction-resolved ("nord for X", "mot Y") positions.
+def position_confident(method: str) -> bool:
+    return method != "at-landmark"
+from reindeer.weather import field as WF  # noqa: E402
 from shapely.geometry import Point  # noqa: E402
 from shapely.prepared import prep  # noqa: E402
+
+
+def build_fields(grid, dates, source="archive"):
+    """Real per-cell WeatherField over the full grid for each date (cached)."""
+    ce, cn = grid["east"].to_numpy(), grid["north"].to_numpy()
+    cz = grid["elevation_m"].to_numpy()
+    fields = {}
+    for d in sorted(set(dates)):
+        try:
+            fields[d] = WF.build_field(source, d, ce, cn, cz)
+        except Exception as e:  # noqa: BLE001
+            print(f"  weather field {d} unavailable: {e}")
+            fields[d] = None
+    return fields
+
+
+def score_date(grid, wf, overrides=None):
+    """Raw score over the grid for one WeatherField, under optional weight overrides."""
+    import reindeer.model.score as S
+    elev = grid["elevation_m"].to_numpy()
+    slope = grid["slope_deg"].to_numpy()
+    tpi = grid["tpi_m"].to_numpy()
+    aspect = grid["aspect_deg"].to_numpy()
+    disturb = grid["dist_disturb_m"].to_numpy() if "dist_disturb_m" in grid else None
+    forage = grid["forage"].to_numpy() if "forage" in grid else None
+    saved = {k: getattr(S, k) for k in (overrides or {})}
+    try:
+        for k, v in (overrides or {}).items():
+            setattr(S, k, v)
+        return S.score_cells(elev, slope, tpi, wfield=wf, aspect=aspect,
+                             disturb_dist=disturb, forage=forage)["score_raw"]
+    finally:
+        for k, v in saved.items():
+            setattr(S, k, v)
 
 PROCESSED = _ROOT / "data" / "processed"
 REPORT = _ROOT / "docs" / "validation_report.md"
@@ -77,7 +120,7 @@ def resolve_observations(grid, gaz, inside, offset_m, naive=False, pins=None) ->
             continue
         idx = int(((gx - e) ** 2 + (gy - n) ** 2).argmin())
         rows.append({"date": r["date"], "cell_idx": idx, "method": method,
-                     "region": r["region"]})
+                     "region": r["region"], "landmarks": r["landmark_phrases"]})
     return pd.DataFrame(rows)
 
 
@@ -116,32 +159,22 @@ def evaluate(used, per_date_score, smooth=None, radius_m=0.0, weights=None):
     return used.assign(percentile=pct), pct, obs_bg
 
 
-def ablation_auc(used, wx, layers, overrides) -> float:
+def ablation_auc(used, grid, fields, overrides) -> float:
     """Re-score each date under temporary weight overrides; return date-matched AUC.
 
     DIAGNOSTIC ONLY — uses the test set, so configs found here are hypotheses, not a
     validated retuning. The shipped weights (score.py) are left unchanged.
     """
-    import reindeer.model.score as S
-    elev, slope, tpi, disturb, forage = layers
-    saved = {k: getattr(S, k) for k in overrides}
-    try:
-        for k, v in overrides.items():
-            setattr(S, k, v)
-        cache, ps = {}, []
-        for _, r in used.iterrows():
-            d = r["date"]
-            if d not in wx:
-                continue
-            if d not in cache:
-                cache[d] = S.score_cells(elev, slope, tpi, wx[d],
-                                         disturb_dist=disturb, forage=forage)["score_raw"]
-            sc = cache[d]
-            ps.append(V.percentile_rank(sc[r["cell_idx"]], sc))
-        return float(np.mean(ps))
-    finally:
-        for k, v in saved.items():
-            setattr(S, k, v)
+    cache, ps = {}, []
+    for _, r in used.iterrows():
+        d = r["date"]
+        if fields.get(d) is None:
+            continue
+        if d not in cache:
+            cache[d] = score_date(grid, fields[d], overrides)
+        sc = cache[d]
+        ps.append(V.percentile_rank(sc[r["cell_idx"]], sc))
+    return float(np.mean(ps))
 
 
 def main() -> None:
@@ -153,21 +186,12 @@ def main() -> None:
     if pins:
         print(f"using {len(pins)} manual position pin(s)")
 
-    # all candidate dates (naive set is the superset of dates) -> weather + per-date scores
+    # all candidate dates (naive set is the superset of dates) -> real weather fields
     cand = resolve_observations(grid, gaz, inside, offset_m=3000.0, naive=True)
-    cx, cy = grid["east"].mean(), grid["north"].mean()
-    lon, lat = _to_wgs.transform(cx, cy)
-    archive = fetch_archive(lat, lon, min(cand["date"]), max(cand["date"]))
-    wx = weather_by_date(archive)
-
-    elev, slope, tpi = grid["elevation_m"].to_numpy(), grid["slope_deg"].to_numpy(), grid["tpi_m"].to_numpy()
-    disturb = grid["dist_disturb_m"].to_numpy() if "dist_disturb_m" in grid else None
-    forage = grid["forage"].to_numpy() if "forage" in grid else None
-    per_date_score = {}
-    for d in sorted(set(cand["date"])):
-        per_date_score[d] = (None if d not in wx else
-                             score_cells(elev, slope, tpi, wx[d],
-                                         disturb_dist=disturb, forage=forage)["score_raw"])
+    print(f"building real per-cell weather fields for {cand['date'].nunique()} dates ...")
+    fields = build_fields(grid, cand["date"], source="archive")
+    per_date_score = {d: (None if fields.get(d) is None else score_date(grid, fields[d]))
+                      for d in sorted(set(cand["date"]))}
 
     # headline: human-pinned positions, evaluated over a radius zone (not a point);
     # baseline: naive at-landmark, point. Reports name a large area, so each report is
@@ -177,6 +201,26 @@ def main() -> None:
     used, pct, obs_bg = evaluate(resolved, per_date_score, smooth, HEADLINE_RADIUS_M)
     naive_used, naive_pct, _ = evaluate(cand, per_date_score)  # point, no pins, no radius
     n_pinned = int(resolved["method"].str.endswith("-pinned").sum()) if len(resolved) else 0
+
+    # effort-matched percentiles (IDEA 009) on the same reports, then split by
+    # positional confidence (reporter-error correction, 2026-08-09): the headline is
+    # the POSITION-CONFIDENT tier — reports whose location we actually trust.
+    cell_dist = grid["dist_disturb_m"].to_numpy()
+    eweights = V.effort_weights(cell_dist, cell_dist[used["cell_idx"].to_numpy()])
+    _, pct_e, _ = evaluate(resolved, per_date_score, smooth, HEADLINE_RADIUS_M,
+                           weights=eweights)
+    conf_mask = used["method"].map(position_confident).to_numpy()
+    pct_conf = pct_e[conf_mask]
+    pct_vague = pct_e[~conf_mask]
+    vague_rows = used[~conf_mask]
+
+    def _hits(p):
+        return {"auc": float(p.mean()),
+                "half": float((p >= 0.50).mean()),
+                "top3": float((p >= 2.0 / 3.0).mean()),
+                "top20": float((p >= 0.80).mean()),
+                "top10": float((p >= 0.90).mean())}
+    H_conf, H_all_e, H_vague = _hits(pct_conf), _hits(pct_e), _hits(pct_vague)
 
     auc = float(pct.mean())
     f20, lift20 = V.top_quantile_lift(pct, 0.20)
@@ -194,7 +238,6 @@ def main() -> None:
                       V.top_quantile_lift(p, 0.20)[1], float((p >= 0.5).mean()) * 100))
 
     # DIAGNOSTIC ablations (uses the test set -> hypotheses, not a validated retuning)
-    layers = (elev, slope, tpi, disturb, forage)
     abl = [
         ("full model (shipped)", {}),
         ("- disturbance penalty", {"W_DISTURB": 0.0}),
@@ -204,12 +247,12 @@ def main() -> None:
                                     "W_SHELTER": 0.0, "W_STEEP": 0.0,
                                     "W_DISTURB": 0.0, "W_FORAGE": 0.0}),
     ]
-    abl_rows = [(name, ablation_auc(used, wx, layers, ov)) for name, ov in abl]
+    abl_rows = [(name, ablation_auc(used, grid, fields, ov)) for name, ov in abl]
 
     methods = used["method"].value_counts().to_dict()
     by_year = used.assign(year=used["date"].str[:4]).groupby("year")["percentile"].agg(["count", "mean"])
-    verdict = ("ranks the reported areas **above chance**" if auc >= 0.55 else
-               "ranks the reported areas **at chance** (no better, no worse)" if auc >= 0.45 else
+    verdict = ("ranks the reported areas **above chance**" if H_conf["auc"] >= 0.55 else
+               "ranks the reported areas **at chance** (no better, no worse)" if H_conf["auc"] >= 0.45 else
                "still ranks the reported areas **below chance**")
     full_auc = abl_rows[0][1]
     low_auc = next((a for n, a in abl_rows if n.startswith("prefer LOW")), float("nan"))
@@ -265,16 +308,40 @@ def main() -> None:
         "(scoring each reading's location within that day's field on the weather+bug+landscape "
         "rules only — the readings are never an input)?",
         "",
-        f"- **{hit_half*100:.0f}% of readings fell in the model's favored half** "
+        "**Headline — position-confident reports, effort-matched background.** The reports "
+        "are written by hunters naming the nearest known feature; a bare landmark name "
+        "locates the *name* (usually a valley or lake), not the herd, so those "
+        f"({len(pct_vague)} 'i området X' reports) measure reporter/geocoder error, not the "
+        f"model. On the {len(pct_conf)} reports whose position is actually trustworthy "
+        "(human-pinned or direction-resolved), judged against effort-matched available "
+        "ground (IDEA 009):",
+        "",
+        f"- **{H_conf['half']*100:.0f}% of readings fell in the model's favored half** "
         "(chance = 50%).",
-        f"- **{hit_top3*100:.0f}% in the model's top third** (chance = 33%).",
-        f"- **{f20*100:.0f}% in the model's top 20%** (chance = 20%; {lift20:.2f}× chance), "
-        f"**{f10*100:.0f}% in the top 10%** (chance = 10%; {lift10:.2f}×).",
+        f"- **{H_conf['top3']*100:.0f}% in the model's top third** (chance = 33%).",
+        f"- **{H_conf['top20']*100:.0f}% in the model's top 20%** (chance = 20%; "
+        f"{H_conf['top20']/0.20:.1f}× chance), **{H_conf['top10']*100:.0f}% in the top 10%** "
+        f"(chance = 10%; {H_conf['top10']/0.10:.1f}×).",
+        f"- Date-matched AUC **{H_conf['auc']:.3f}** (0.5 = chance).",
+        "",
+        "All-reports view (same effort-matched background, including the vague tier): "
+        f"AUC {H_all_e['auc']:.3f}, favored-half {H_all_e['half']*100:.0f}%, "
+        f"top-20% {H_all_e['top20']*100:.0f}%. The vague tier alone scores "
+        f"{H_vague['auc']:.3f} — its positions are known-mislocated (see below), which is "
+        "why it is reported separately rather than allowed to drag the headline.",
         "",
         f"With the human-pinned real positions and a {HEADLINE_RADIUS_M/1000:.1f} km zone, the "
         f"current weather+bug+landscape model {verdict} for the hunting season. (The readings "
         "are used only to measure this; they are never an input to or a tuning target for the "
         "model.)",
+        "",
+        "### Vague reports awaiting a human pin (the permanent fix)",
+        "These name-only reports are placed ON the named feature by the geocoder; pinning "
+        "their real areas in `data/gazetteer/manual_positions.csv` would move them into the "
+        "confident tier:",
+        "```",
+        *[f"{r['date']}  {r['landmarks']}" for _, r in vague_rows.iterrows()],
+        "```",
         "",
         "## Supporting statistics",
         f"- **Date-matched AUC (mean percentile): {auc:.3f}** (0.5 = chance) — equivalent "
@@ -344,7 +411,11 @@ def main() -> None:
     ]
     REPORT.write_text("\n".join(lines), encoding="utf-8")
 
-    print(f"pinned+zone({HEADLINE_RADIUS_M:.0f}m) AUC {auc:.3f} | top20 {lift20:.2f}x | "
+    print(f"HEADLINE confident-tier (effort-matched, n={len(pct_conf)}): AUC {H_conf['auc']:.3f} | "
+          f"half {H_conf['half']*100:.0f}% | top20 {H_conf['top20']*100:.0f}% | top10 {H_conf['top10']*100:.0f}%")
+    print(f"all-37 effort-matched AUC {H_all_e['auc']:.3f} | vague-tier (n={len(pct_vague)}) "
+          f"AUC {H_vague['auc']:.3f} (name-only positions, awaiting pins)")
+    print(f"whole-field all-reports AUC {auc:.3f} | top20 {lift20:.2f}x | "
           f"half {hit_half*100:.0f}% | p {p_val:.4f} | pins used {n_pinned}/{len(used)}")
     print(f"naive baseline AUC {naive_pct.mean():.3f} ({len(naive_used)} obs)")
     print("radius sweep:", [(int(r), round(a, 3)) for r, n, a, l, h in sweep])
