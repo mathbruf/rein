@@ -1,4 +1,4 @@
-# Reindeer Movement Analysis (Lordalen / Reinheimen)
+# Reindeer Movement — a Research & Learning Analysis (Lordalen / Reinheimen)
 
 A daily, forecast-driven **probability heatmap** of where wild reindeer (*villrein*) are
 likely to be one day ahead, in the **Lordalen** study area of **Reinheimen
@@ -111,4 +111,4 @@ but one that genuinely captures part of what moves the animals, where the report
 trusted. See `PROGRESS.md` and `output/analysis/hit_analysis.png`.
 
 ## Last session
-This is the last claude-code session: claude --resume 4ba2afce-adc5-4f3a-a435-c6ff4fb59d8c
+This is the last claude-code session: claude --resume fa580734-4be4-4acb-a624-a7cc538f2cf8
