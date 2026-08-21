@@ -9,7 +9,7 @@ Pipeline:
   5. report date-matched percentile/AUC, top-quantile lift, Boyce, a permutation null,
      a naive (at-landmark) baseline, and an offset sensitivity sweep.
 
-The weights were tuned with the hunter and never fitted to sightings, so all
+The weights were tuned with the local field expert and never fitted to sightings, so all
 observations are a legitimate held-out test. Writes docs/validation_report.md.
 
 Usage (repo root, venv active):
@@ -269,7 +269,7 @@ def main() -> None:
             f"On this corrected set the shipped model scores {full_auc:.3f}; the only change "
             f"that raises the ranking is **removing the disturbance penalty** ({nodist_auc:.3f}). "
             "That is the expected signature of the **effort-bias confound** — reports come from "
-            "where hunters can get to, so penalising accessible ground lowers the *apparent* "
+            "where observers can get to, so penalising accessible ground lowers the *apparent* "
             "hit-rate even if the rule is ecologically right. We treat this as a measurement "
             "artifact to resolve with an effort covariate (IDEA 009), not evidence to drop the "
             "rule. Removing the high-ground baseline (%.3f) or preferring low ground (%.3f) both "
@@ -288,7 +288,7 @@ def main() -> None:
         f"{used['date'].nunique()} dates ({min(used['date'])} … {max(used['date'])})._",
         "",
         "## Method",
-        "- **Held-out:** scorer weights were expert-tuned with the hunter, never fitted to "
+        "- **Held-out:** scorer weights were expert-tuned with the local field expert, never fitted to "
         "sightings — every observation is an out-of-sample test point.",
         "- **Positioning:** each sighting is placed at its **human-pinned real area** where "
         f"one is given ({n_pinned} of {len(used)} reports), else by its directional phrase "
@@ -309,7 +309,7 @@ def main() -> None:
         "rules only — the readings are never an input)?",
         "",
         "**Headline — position-confident reports, effort-matched background.** The reports "
-        "are written by hunters naming the nearest known feature; a bare landmark name "
+        "are written by observers naming the nearest known feature; a bare landmark name "
         "locates the *name* (usually a valley or lake), not the herd, so those "
         f"({len(pct_vague)} 'i området X' reports) measure reporter/geocoder error, not the "
         f"model. On the {len(pct_conf)} reports whose position is actually trustworthy "
@@ -331,7 +331,7 @@ def main() -> None:
         "why it is reported separately rather than allowed to drag the headline.",
         "",
         f"With the human-pinned real positions and a {HEADLINE_RADIUS_M/1000:.1f} km zone, the "
-        f"current weather+bug+landscape model {verdict} for the hunting season. (The readings "
+        f"current weather+bug+landscape model {verdict} for the autumn observation season. (The readings "
         "are used only to measure this; they are never an input to or a tuning target for the "
         "model.)",
         "",
@@ -389,21 +389,21 @@ def main() -> None:
         f"- **Positions are areas, not points:** {n_pinned} reports use a human-pinned real "
         f"area and all are scored over a {HEADLINE_RADIUS_M/1000:.1f} km zone; the rest still "
         "rely on landmark + direction. Remaining positional noise can only depress the score.",
-        "- **Effort/observer bias:** presence-only reports from where hunters go; background "
+        "- **Effort/observer bias:** presence-only reports from where observers go; background "
         "is the whole field, so the result partly reflects reporting, not only true presence.",
         "- **Weather:** ERA5 reanalysis is one area reading per day; the scorer downscales it "
         "by lapse rate + terrain exposure (a physical model, not measured micro-weather), so "
         "ridge wind/temperature are estimated, not observed.",
         "- **Observer bias confound:** we cannot separate 'disturbance penalty is wrong' "
         "from 'reports are effort-biased toward accessible terrain'. A fair test needs an "
-        "effort covariate or a background restricted to where hunters actually go.",
+        "effort covariate or a background restricted to where observers actually go.",
         "",
         "## Recommended next iteration (re-tested on held-out / cross-validated data)",
-        "1. **Seasonality:** the sightings are hunting-season; turn the insect 'go-high' "
+        "1. **Seasonality:** the sightings are autumn-season; turn the insect 'go-high' "
         "driver and the summer high-ground baseline *off* (or down) for late Aug–Sept, and "
         "test a low/mid-elevation preference for that window.",
         "2. **Disturbance vs effort:** add an effort/accessibility covariate, or restrict the "
-        "background to huntable/accessed terrain, before judging the disturbance penalty.",
+        "background to accessed terrain, before judging the disturbance penalty.",
         "3. **More data + cross-validation:** recover the 2022 free-prose season (IDEA 002) "
         "and use k-fold CV so any weight change is validated out-of-sample, not on this set.",
         "4. **Pin the rest:** fill the remaining `unsure` rows in "

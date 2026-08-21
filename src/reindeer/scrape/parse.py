@@ -1,4 +1,4 @@
-"""Phase 1: parse a cached jaktinfo post into structured observation rows.
+"""Phase 1: parse a cached villreinutvalet observation post into structured observation rows.
 
 A post is: intro prose -> "Observasjonar etter dagens jakt:" -> one line per region
 -> closing prose. We emit ONE ROW PER SPATIAL CLAIM (sentence) within each region line,

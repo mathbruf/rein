@@ -1,1 +1,1 @@
-"""# TODO (Phase 1): villreinutvalet.no/jaktinfo scraper + post parser."""
+"""# TODO (Phase 1): villreinutvalet.no observation-post scraper + parser."""

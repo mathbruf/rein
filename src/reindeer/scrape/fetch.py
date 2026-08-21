@@ -1,4 +1,4 @@
-"""Phase 1: fetch & cache villreinutvalet.no/jaktinfo posts.
+"""Phase 1: fetch & cache villreinutvalet.no observation posts (the site's /jaktinfo pages).
 
 Etiquette (see CLAUDE.md): identify the client, go slow, cache locally so we never
 re-fetch a post we already have. The site belongs to a small local committee.
@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 
 BASE = "https://www.villreinutvalet.no"
 INDEX = f"{BASE}/jaktinfo"
-USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research)"
+USER_AGENT = "reindeer-heatmap/0.1 (reindeer movement-ecology research)"
 DEFAULT_DELAY = 1.5  # seconds between requests — be gentle
 
 # Repo-root-relative cache locations.

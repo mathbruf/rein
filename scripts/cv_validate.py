@@ -153,7 +153,7 @@ def main() -> None:
         "**Interpretation (important):** the variant selected here is *removing the "
         "disturbance penalty*, and it generalises across folds — but that is the expected "
         "signature of the **effort-bias confound (IDEA 009)**, not proof the rule is wrong. "
-        "Presence reports come from where hunters can walk in, so any rule that down-weights "
+        "Presence reports come from where observers can walk in, so any rule that down-weights "
         "accessible ground will lower the apparent hit-rate against effort-biased reports "
         "regardless of true reindeer behaviour. This Δ is therefore **not** licence to drop "
         "the rule; it is evidence to add an effort/accessibility covariate or an "

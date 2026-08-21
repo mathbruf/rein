@@ -3,7 +3,7 @@
 Turns next-day weather + the static terrain layers into a 0..1 presence score per
 250 m cell. This is the heart of the project: a transparent, expert-tunable scoring
 function — NOT a fitted model. Every weight and threshold below is a named constant
-with a comment so a domain expert (the hunter) can tune it. Sightings are not used
+with a comment so a domain expert (the field expert) can tune it. Sightings are not used
 here; they are kept for Phase-5 validation only.
 
 Behavioral logic (CLAUDE.md §1), encoded as two competing weather-gated regimes over
@@ -15,7 +15,7 @@ a *per-cell downscaling* of the area forecast, so the map is never flat on a cal
      (~6.5 °C/km), so the tops are modeled colder than the valley reading; wind is
      amplified on wind-exposed ground (+TPI ridges/summits) and damped in hollows
      (−TPI). This is the single biggest reason the old area-wide scorer went
-     *uninformative* for the hunt window: on a "calm, cool" autumn day the valley
+     *uninformative* for the autumn observation window: on a "calm, cool" autumn day the valley
      reading turned BOTH regimes off, yet the exposed tops are genuinely cold and
      windy. Downscaling lets the shelter regime engage from the terrain itself.
 
@@ -33,10 +33,10 @@ a *per-cell downscaling* of the area forecast, so the map is never flat on a cal
   SHELTER regime  (cold OR wet OR windy day):
      animals seek shelter and graze lower / leeward -> a cell is favored when it is
      itself calm and mild (not cold, not wind-scoured) and topographically leeward.
-     Per the hunter, weather/shelter dominates day-to-day movement more than insects
+     Per the field expert, weather/shelter dominates day-to-day movement more than insects
      do (W_SHELTER > W_INSECT).
 
-  BASELINE: a gentle always-on preference for high ground (hunter: "mostly 1300 m+"),
+  BASELINE: a gentle always-on preference for high ground (field expert: "mostly 1300 m+"),
      which the two weather regimes (and disturbance) pull them off.
 
   FORAGE: NIBIO AR50 land cover -> a per-cell destination value (open alpine ground
@@ -45,7 +45,7 @@ a *per-cell downscaling* of the area forecast, so the map is never flat on a cal
   TRAVEL-LIMIT penalty: very steep/cliffed cells are down-weighted (hard to use).
 
   DISTURBANCE penalty: cells near roads/trails/cabins are discounted (W_DISTURB),
-     fading with distance — "they come lower only if hunters allow".
+     fading with distance — "they come lower only if human activity allows".
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ import numpy as np
 #     across days rather than relative to whatever cells were loaded) ---------------
 from reindeer.area import AREA
 
-ELEV_LO_M = AREA.elev_lo_m  # below here all ~equally "low" -> elev_norm 0  [hunter: mostly 1300 m+]
+ELEV_LO_M = AREA.elev_lo_m  # below here all ~equally "low" -> elev_norm 0  [field expert: mostly 1300 m+]
 ELEV_HI_M = AREA.elev_hi_m  # ~high open fjell             -> elev_norm 1  (config/area.json)
 TPI_SCALE_M = 60.0    # TPI mapped from [-60,+60] m onto [0,1]; >0 = exposed high
 SLOPE_STEEP_LO = 30.0  # slope (deg) where the travel penalty starts
@@ -86,23 +86,23 @@ W_WEATHER = 1.0                 # overall strength of the (decoupled) weather-re
 # --- weather -> pressure ramps ---------------------------------------------------
 # Insect activity climbs with warmth and is suppressed by wind.
 INSECT_T_LO, INSECT_T_HI = 10.0, 18.0   # degC: <10 ~no insects, >18 ~full pressure.
-                                        # ASSUMPTION (hunter unsure 2026-06-19) - test in validation.
+                                        # ASSUMPTION (field expert unsure 2026-06-19) - test in validation.
 INSECT_W_CALM, INSECT_W_BREEZY = 2.0, 5.0  # m/s: full bug pressure when calm (<=2), gone by a
-                                           # light breeze (~5) [hunter, 2026-06-19]
-INSECT_RAIN_OFF_MM = 2.0  # rain grounds the flies: bug drive ~0 by ~2 mm/day [hunter: no bugs in rain]
+                                           # light breeze (~5) [field expert, 2026-06-19]
+INSECT_RAIN_OFF_MM = 2.0  # rain grounds the flies: bug drive ~0 by ~2 mm/day [field expert: no bugs in rain]
 # Shelter drivers.
-COLD_T_HI, COLD_T_LO = 8.0, 0.0    # degC: >=8 ~no cold drive, <=0 ~full. ASSUMPTION (hunter no info)
-WET_MM_FULL = 5.0                  # mm/day giving full "wet" drive.     ASSUMPTION (hunter no info)
+COLD_T_HI, COLD_T_LO = 8.0, 0.0    # degC: >=8 ~no cold drive, <=0 ~full. ASSUMPTION (field expert no info)
+WET_MM_FULL = 5.0                  # mm/day giving full "wet" drive.     ASSUMPTION (field expert no info)
 WIND_HI_LO, WIND_HI_HI = 8.0, 15.0  # m/s: strong-wind shelter drive ramp
 
 # --- regime / term weights (expert-set; tune these) ------------------------------
-# Hunter 2026-06-19: weather/shelter dominates day-to-day over insects -> shelter > insect.
+# Field expert 2026-06-19: weather/shelter dominates day-to-day over insects -> shelter > insect.
 W_INSECT = 0.7     # weight of the insect/thermal (go-high) regime
 W_SHELTER = 1.0    # weight of the shelter (go-low) regime
 W_STEEP = 0.5      # strength of the steep-terrain travel penalty (0..1 multiplier)
-W_BASELINE = 0.3   # gentle always-on pull to high ground [hunter: "mostly 1300 m+"]; weather and
-                   #   (later) disturbance override it - "lower if wind and hunters allow"
-W_DISTURB = 0.6    # disturbance penalty strength [hunter: "lower only if hunters allow"]
+W_BASELINE = 0.3   # gentle always-on pull to high ground [field expert: "mostly 1300 m+"]; weather and
+                   #   (later) disturbance override it - "lower if wind and human activity allows"
+W_DISTURB = 0.6    # disturbance penalty strength [field expert: "lower only if human activity allows"]
 W_FORAGE = 0.4     # additive forage destination value (NIBIO AR50 land cover)
 FORAGE_RELATIVE = False  # IDEA 016: subtract the field-mean forage so the ~constant
                          #   open-alpine offset (~89% of cells at 0.85) stops
@@ -253,7 +253,7 @@ def score_cells(elev, slope, tpi, w: WeatherDay = None,
         p_ins = float(_insect_p(warm_low, amb_wind, area_precip))
         p_shl = float(_shelter_p(cold_top, windy_top, area_precip))
         # DECOUPLED regime term: a weighted SWITCH between the go-high and go-low
-        # targets (not two independent additive terms that partly cancel). The hunter's
+        # targets (not two independent additive terms that partly cancel). The field expert's
         # shelter>insect preference sets the blend; `drive` is the overall weather push.
         wi, ws = W_INSECT * p_ins, W_SHELTER * p_shl
         r_ins = wi / (wi + ws + 1e-9)
@@ -284,7 +284,7 @@ def score_cells(elev, slope, tpi, w: WeatherDay = None,
             shelter = 0.6 * (1 - elev_n) + 0.4 * (1 - tpi_n)  # legacy go-low target
         weather_term = (W_INSECT * p_ins * refuge) + (W_SHELTER * p_shl * shelter)
 
-    baseline = elev_n   # default home-range preference: high ground (hunter: "mostly 1300 m+")
+    baseline = elev_n   # default home-range preference: high ground (field expert: "mostly 1300 m+")
     base = (W_BASELINE * baseline) + weather_term
     if forage is not None and W_FORAGE > 0:
         fv = np.asarray(forage, float)

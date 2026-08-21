@@ -19,7 +19,7 @@ from pathlib import Path
 import requests
 
 API = "https://api.kartverket.no/stedsnavn/v1/navn"
-USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research)"
+USER_AGENT = "reindeer-heatmap/0.1 (reindeer movement-ecology research)"
 OUT_EPSG = 25832
 
 from reindeer.area import AREA

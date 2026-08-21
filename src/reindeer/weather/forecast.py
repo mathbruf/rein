@@ -15,7 +15,7 @@ import requests
 from reindeer.model.score import WeatherDay
 
 API = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
-USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research)"
+USER_AGENT = "reindeer-heatmap/0.1 (reindeer movement-ecology research)"
 
 
 def fetch_forecast(lat: float, lon: float, session: requests.Session | None = None) -> dict:

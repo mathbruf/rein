@@ -28,7 +28,7 @@ _to_ar50 = Transformer.from_crs(25832, 4326, always_xy=True)
 
 WFS = "https://wfs.nibio.no/cgi-bin/ar50_2"
 TYPENAME = "ms:AR50"
-USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research)"
+USER_AGENT = "reindeer-heatmap/0.1 (reindeer movement-ecology research)"
 GML = "{http://www.opengis.net/gml}"
 MS = "{http://mapserver.gis.umn.edu/mapserver}"
 

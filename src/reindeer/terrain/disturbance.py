@@ -7,7 +7,7 @@ trails, parking, cabins, camping. Sources:
 
 Per cell we store the distance (m, EPSG:25832) to the NEAREST disturbance feature.
 The scorer turns that distance into a penalty via a tunable decay (DISTURB_DECAY_M),
-encoding the hunter's "they come lower only if hunters allow".
+encoding the field expert's "they come lower only when human activity allows".
 
 v1 treats all feature types equally (distance to nearest of any). Weighting by road
 class / trail importance is a later refinement (see IDEAS).

@@ -1,6 +1,6 @@
 """Phase 4: render a scored 250 m grid as a human-readable heatmap.
 
-The map is built for a hunter reading it the night before, so it leads with meaning,
+The map is built for a reader studying it the night before, so it leads with meaning,
 not raw numbers:
   - a shaded-relief (hillshade) terrain background from the 50 m DTM, so ridges,
     valleys and passes are recognisable at a glance;
@@ -9,7 +9,7 @@ not raw numbers:
     builds only where the model favours the ground, pulling the eye to where to go.
     The wash is lightly smoothed for display so it reads as coherent zones rather
     than a per-250 m-cell mosaic (the scores/CSV themselves are unchanged);
-  - a handful of numbered "go here" zones, clustered so they are distinct areas
+  - a handful of numbered "most favoured" zones, clustered so they are distinct areas
     (not adjacent cells), each anchored to its nearest named landmark;
   - a side panel with the date, the day's weather in plain language, which driver is
     active (insect-escape vs shelter), and the ranked zone list with a short reason;
@@ -112,7 +112,7 @@ def _hillshade_background(extent, dtm_path=_DEFAULT_DTM, res=80.0):
 def cluster_top_zones(east, north, score, n=6, min_sep_m=2500.0):
     """Greedy, well-separated top zones: take the highest cell, suppress everything
     within min_sep_m, repeat. Turns a cloud of adjacent hot cells into distinct
-    'go here' areas. Returns a list of (east, north, score) best-first."""
+    'most favoured' areas. Returns a list of (east, north, score) best-first."""
     e = np.asarray(east, float)
     n_ = np.asarray(north, float)
     s = np.asarray(score, float)
@@ -235,7 +235,7 @@ def _north_arrow(ax, extent):
 
 def _wind_arrow(ax, extent, wind_dir_deg: float, label: str = "wind"):
     """Arrow showing where the wind BLOWS TOWARD (met. direction is 'from'), so the
-    reader instantly sees which slopes are windward/lee — and plans the stalk."""
+    reader instantly sees which slopes are windward/lee."""
     import math as _m
     xmin, xmax, ymin, ymax = extent
     cx = xmax - (xmax - xmin) * 0.135
@@ -360,7 +360,7 @@ def render_heatmap(east, north, score, out_png: Path,
         _wind_arrow(ax, extent, float(wind_dir_deg), wind_label)
     if overlay_handles and panel is None:
         # no side panel to host it — draw on the map, under the zone pins so a
-        # "go here" pin is never hidden behind the legend box
+        # "favoured zone" pin is never hidden behind the legend box
         leg = ax.legend(handles=overlay_handles, loc="lower right", fontsize=7,
                         framealpha=0.8, borderpad=0.5, handlelength=1.8,
                         labelspacing=0.35, title="human activity", title_fontsize=7)
@@ -473,8 +473,8 @@ def render_heatmap(east, north, score, out_png: Path,
                          labelspacing=0.3, title="map symbols — human activity",
                          title_fontsize=7, alignment="left")
         panel.text(0.0, 0.02,
-                   "Search-narrowing tool, not a GPS oracle: an honest probability\n"
-                   "surface to complement glassing and fieldcraft, not replace them.",
+                   "Research analysis, not a GPS oracle: an honest probability\n"
+                   "surface of where the day's conditions favour the animals.",
                    fontsize=7.2, va="bottom", color="#666666", style="italic",
                    transform=panel.transAxes)
 

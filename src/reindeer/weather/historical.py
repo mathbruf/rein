@@ -21,7 +21,7 @@ import requests
 from reindeer.model.score import WeatherDay
 
 ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
-USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research)"
+USER_AGENT = "reindeer-heatmap/0.1 (reindeer movement-ecology research)"
 
 _ROOT = Path(__file__).resolve().parents[3]
 CACHE = _ROOT / "data" / "raw" / "archive"

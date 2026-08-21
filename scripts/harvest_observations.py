@@ -1,8 +1,8 @@
-"""Phase 1 harvest: crawl jaktinfo, cache posts, parse to a tidy observations table.
+"""Phase 1 harvest: crawl the villreinutvalet observation posts, cache them, parse to a tidy observations table.
 
 Usage (from repo root, venv active):
-    python scripts/harvest_jaktinfo.py --max-pages 1     # newest 20 posts only
-    python scripts/harvest_jaktinfo.py                   # full archive
+    python scripts/harvest_observations.py --max-pages 1     # newest 20 posts only
+    python scripts/harvest_observations.py                   # full archive
 
 Outputs:
     data/raw/posts/<slug>.html            cached raw posts (resumable)

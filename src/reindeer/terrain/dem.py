@@ -19,7 +19,7 @@ from .grid import load_field_polygons, LORDALEN, DALSIDA
 WCS = "https://wcs.geonorge.no/skwms1/wcs.hoyde-dtm-nhm-25833"
 COVERAGE = "nhm_dtm_topo_25833"
 DEM_EPSG = 25833
-USER_AGENT = "reindeer-heatmap/0.1 (personal hunting research)"
+USER_AGENT = "reindeer-heatmap/0.1 (reindeer movement-ecology research)"
 
 _ROOT = Path(__file__).resolve().parents[3]
 DEM_DIR = _ROOT / "data" / "raw" / "dem"

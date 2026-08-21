@@ -1,8 +1,8 @@
 """Phase 5: metrics for testing the scorer against held-out sightings.
 
-The scorer's weights were expert-tuned with the hunter and were NEVER fitted to the
+The scorer's weights were expert-tuned with the local field expert and were NEVER fitted to the
 sightings, so every geocoded observation is a legitimate held-out test point. We use
-a presence-vs-background design restricted to the field (the huntable terrain that is
+a presence-vs-background design restricted to the field (the accessible open terrain that is
 also the "available" area), with date-matched comparisons so day-to-day differences
 in the overall score scale don't bias the result.
 

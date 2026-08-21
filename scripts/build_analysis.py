@@ -3,7 +3,7 @@
 One command regenerates every analysis artifact from the current model + data:
   hit_analysis.png          (via scripts/hit_analysis.py — run separately)
   validation_breakdown.png  AUC by positioning method and by season
-  weather_drivers.png       which behavioural driver fired on each hunt-window day
+  weather_drivers.png       which behavioural driver fired on each observation-window day
   model_explainer.png       how the scorer works — inputs, terms, weights
   README.md                 plain-language guide: how the model works, what it
                             considers, current headline percentages, honest limits
@@ -148,7 +148,7 @@ def chart_validation_breakdown(u, out: Path):
 
 
 def chart_weather_drivers(grid, fields, out: Path):
-    """Which behavioural driver the model saw on each hunt-window day."""
+    """Which behavioural driver the model saw on each observation-window day."""
     import reindeer.model.score as S
     rows = []
     for d in sorted(k for k, v in fields.items() if v is not None):
@@ -171,12 +171,12 @@ def chart_weather_drivers(grid, fields, out: Path):
 
     fig, ax = plt.subplots(figsize=(13.0, 4.8))
     fig.subplots_adjust(left=0.06, right=0.98, top=0.76, bottom=0.24)
-    fig.text(0.055, 0.94, "What the model saw — behavioural drivers across the hunt window",
+    fig.text(0.055, 0.94, "What the model saw — behavioural drivers across the autumn window",
              fontsize=15, fontweight="bold")
     fig.text(0.055, 0.88,
              "Day-level regime pressures from the real weather field on each validation date.\n"
-             "Shelter (cold/wet/wind) dominates the Aug–Sept hunt; the insect drive is almost "
-             "always off — exactly what the hunter said.",
+             "Shelter (cold/wet/wind) dominates the Aug–Sept season; the insect drive is almost "
+             "always off — exactly what the field expert said.",
              fontsize=9.5, color=INK2, va="top", linespacing=1.5)
     x = np.arange(len(rows))
     ax.bar(x - 0.21, shl, width=0.4, color=C_FAIR, label="shelter drive", zorder=2)
@@ -246,7 +246,7 @@ def chart_model_explainer(out: Path):
         f"forage value                   w={S.W_FORAGE}",
         f"steep-terrain penalty          w={S.W_STEEP}",
         f"disturbance penalty            w={S.W_DISTURB}",
-        "(all weights expert-set with the hunter,",
+        "(all weights expert-set with the field expert,",
         " never fitted to sightings)"])
     box(0.71, 0.44, 0.25, 0.36, "OUTPUT  (what you read)", [
         "• 0–1 score per cell → percentile-",
@@ -254,10 +254,10 @@ def chart_model_explainer(out: Path):
         "• Up to 6 named “go here” zones",
         "   with plain-language reasons",
         "• Wind arrow + roads/trails/cabins",
-        "   for orientation and the stalk",
+        "   for orientation on the ground",
         "• output/forecast/<date>.png"])
     box(0.37, 0.06, 0.59, 0.30, "VALIDATION  (the honesty loop — separate from scoring)", [
-        "Hunter reports → gazetteer + human pins → each report scored within its day's field.",
+        "Field reports → gazetteer + human pins → each report scored within its day's field.",
         "Fairness corrections: effort-matched background (reports come from accessible ground),",
         "position-confidence tiers (name-only geocodes measure the reporter, not the model).",
         "Gate: k-fold cross-validated, select-then-evaluate — a change is kept ONLY if it",
@@ -297,8 +297,8 @@ roads/trails/cabins). Two behavioural regimes compete in a weighted switch:
 **insect-escape** (warm + calm + dry → animals climb to cool, wind-exposed ground)
 and **shelter** (cold / wet / windy → animals hold leeward, calmer, lower ground),
 on top of a gentle high-ground baseline, a forage bonus and a disturbance penalty
-("they come lower only if hunters allow"). Every weight is a named constant tuned
-with the hunter — **sightings are never an input**; they are kept exclusively to
+("they come lower only when human activity allows"). Every weight is a named constant tuned
+with the field expert — **sightings are never an input**; they are kept exclusively to
 *test* the map.
 
 ## What is taken into consideration
@@ -327,7 +327,7 @@ with the hunter — **sightings are never an input**; they are kept exclusively 
 |---|---|
 | `hit_analysis.png` | The headline: cumulative gain + hit-% at each threshold, under all three measurement views (whole-field / effort-matched / position-confident). |
 | `validation_breakdown.png` | Where the hit-rate comes from: score by positioning method (trustworthy positions score ~0.7–0.8; name-only geocodes drag the average) and by season. |
-| `weather_drivers.png` | What the model saw on each validation day — shelter dominates the autumn hunt window; insects are almost always off. |
+| `weather_drivers.png` | What the model saw on each validation day — shelter dominates the autumn observation window; insects are almost always off. |
 | `model_explainer.png` | The full pipeline diagram: landscape + real weather → scoring terms and weights → map, plus the validation loop. |
 
 ## Honest limits (always state these)
@@ -337,7 +337,7 @@ with the hunter — **sightings are never an input**; they are kept exclusively 
   background), but a residual accessibility edge remains.
 - Positions are areas (~2.5 km), never GPS points; 5 vague reports await human pins.
 - The map is a **search-narrowing tool, not a GPS oracle** — reindeer are social
-  and partly stochastic; the model narrows where to glass from, nothing more.
+  and partly stochastic; the model narrows where the animals are likely to be, nothing more.
 """
     out.write_text(text, encoding="utf-8")
 

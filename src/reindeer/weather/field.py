@@ -41,7 +41,7 @@ from pyproj import Transformer
 
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_API = "https://archive-api.open-meteo.com/v1/archive"
-USER_AGENT = "reindeer-heatmap/0.2 (personal hunting research)"
+USER_AGENT = "reindeer-heatmap/0.2 (reindeer movement-ecology research)"
 _HOURLY = "temperature_2m,wind_speed_10m,wind_direction_10m,precipitation"
 
 _ROOT = Path(__file__).resolve().parents[3]

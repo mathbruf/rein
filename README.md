@@ -1,16 +1,18 @@
-# Reindeer Heatmap (Lordalen / Reinheimen)
+# Reindeer Movement Analysis (Lordalen / Reinheimen)
 
 A daily, forecast-driven **probability heatmap** of where wild reindeer (*villrein*) are
-likely to be one day ahead, in the **Lordalen** hunting field of **Reinheimen
+likely to be one day ahead, in the **Lordalen** study area of **Reinheimen
 villreinområde** (Lesja, Innlandet, Norway). Using the next day's weather forecast and the
-fixed landscape (terrain, forage, snow, distance from disturbance), it scores every grid
-cell from 0 ("avoid / unlikely") to 1 ("strongly favored") so a hunter can decide, the
-night before, where to walk in and where to glass from.
+fixed landscape (terrain, forage, snow, distance from human disturbance), it scores every
+grid cell from 0 ("unlikely") to 1 ("strongly favored") — a way of asking, and testing,
+**what actually drives a reindeer's day**: weather, insects, food, terrain, or people.
 
-> **This is a search-narrowing tool, not a GPS oracle.** It does not predict the herd's
-> exact position. Reindeer move as a social herd and tomorrow depends heavily on where they
-> are today (usually unknown). The output is an honest probability surface that narrows the
-> search and complements glassing and fieldcraft — it does not replace them.
+> **Read [`docs/ABOUT.md`](docs/ABOUT.md) first — how this project should be viewed.**
+> This is a research and learning analysis of reindeer movement, not a tracking tool.
+> It does not predict the herd's exact position. Reindeer move as a social herd and
+> tomorrow depends heavily on where they are today (usually unknown). The output is an
+> honest probability surface that expresses which environmental pressures the model
+> believes are acting — and the validation phase tests whether that belief holds up.
 
 ## Quickstart
 
@@ -31,6 +33,7 @@ pip install -r requirements.txt
 ```
 
 ## Project docs
+- **`docs/ABOUT.md`** — how to view this project: the research question, what the analysis is and is not.
 - **`CLAUDE.md`** — persistent project context (the full infosheet) and the working rules every contributor follows.
 - **`ROADMAP.md`** — the phased build plan and each phase's Definition of Done.
 - **`PROGRESS.md`** — onboarding + running work log; read this to see the current phase and next action.
@@ -40,9 +43,9 @@ pip install -r requirements.txt
 
 ## Pipeline (run from the repo root, venv active)
 ```bash
-python scripts/harvest_jaktinfo.py   # Phase 1: scrape + parse sightings (validation data)
+python scripts/harvest_observations.py  # Phase 1: scrape + parse sightings (validation data)
 python scripts/build_gazetteer.py    # Phase 2: landmark names -> coordinates (SSR)
-python scripts/build_grid.py         # Phase 3: 250 m grid clipped to the field
+python scripts/build_grid.py         # Phase 3: 250 m grid clipped to the study area
 python scripts/build_terrain.py      # Phase 3: DTM -> elevation/slope/ruggedness/TPI
 python scripts/build_disturbance.py  # Phase 3: distance to roads/trails/cabins (OSM + KML)
 python scripts/build_forage.py       # Phase 3: forage value from NIBIO AR50 land cover
@@ -71,11 +74,11 @@ CSVs are EPSG:25832 (import into QGIS as delimited text; X=east, Y=north).
 `python scripts/daily_map.py` fetches tomorrow's forecast and produces, in one command, a
 scored grid CSV and a **human-readable heatmap**: a shaded-relief terrain background, a
 single-hue green probability wash (bare terrain = unlikely, green = favoured), up to six
-clustered "go here" zones each anchored to the nearest named landmark, **human activity for
-orientation** (roads, tracks, trails, cabins, trailhead parking — from the cached OSM/KML
-data), a **wind arrow**, and a side panel with the date, the day's weather in plain language
-(incl. wind direction), which behavioural driver is active, and the ranked zone list — plus
-a legend, scale bar and north arrow.
+clustered high-probability zones each anchored to the nearest named landmark, **human
+activity for orientation** (roads, tracks, trails, cabins, trailhead parking — from the
+cached OSM/KML data), a **wind arrow**, and a side panel with the date, the day's weather
+in plain language (incl. wind direction), which behavioural driver is active, and the
+ranked zone list — plus a legend, scale bar and north arrow.
 
 **Weather is now a REAL per-cell field (not synthetic downscaling).** `weather/field.py`
 fetches a lattice of real weather points over the grid from **Open-Meteo** (free, no key:
@@ -88,10 +91,10 @@ leeward/windward shelter (previously wind direction was never even fetched), and
 behavioural regimes were **decoupled** into a weighted switch so they no longer partly cancel.
 
 **Honest validation result (`docs/validation_report.md`, `docs/cv_report.md`):** tested
-against held-out hunting-season sightings using real weather on each report's exact date and
+against held-out autumn-season sightings using real weather on each report's exact date and
 **human-pinned real positions** (evaluated over a 2.5 km zone). Two measurement corrections
 make the test fair to the model: the **effort-matched background** (reports come from where
-hunters can walk in — IDEA 009) and the **reporter-error tiering** (a bare landmark name
+observers can walk in — IDEA 009) and the **reporter-error tiering** (a bare landmark name
 locates the *feature* — usually a valley or lake — not the herd, so the 8 name-only
 "i området X" reports are scored separately until the human pins their real areas).
 **Headline, on the 30 position-confident reports: CV AUC 0.641 ± 0.102 with 88% of folds
@@ -104,8 +107,8 @@ features. The remaining vague tier (5 name-only reports) awaits human pins
 **never** fitted to the sightings, and candidate refinements are only adopted if they
 clear the CV gate out-of-sample (the first forage/threshold sweep cleared nothing —
 kept honest). The sample is small, so this remains an honest, validated **prototype** —
-but one that genuinely narrows the search where the reports can be trusted. See
-`PROGRESS.md` and `output/analysis/hit_analysis.png`.
+but one that genuinely captures part of what moves the animals, where the reports can be
+trusted. See `PROGRESS.md` and `output/analysis/hit_analysis.png`.
 
 ## Last session
 This is the last claude-code session: claude --resume 4ba2afce-adc5-4f3a-a435-c6ff4fb59d8c
