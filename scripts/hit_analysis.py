@@ -40,13 +40,9 @@ from shapely.prepared import prep  # noqa: E402
 _to_wgs = Transformer.from_crs(25832, 4326, always_xy=True)
 
 # validated colourblind-safe palette (dataviz skill): blue vs orange vs teal, neutral chance.
-C_FAIR = "#2a78d6"      # effort-matched (fair), all reports
-C_RAW = "#eb6834"       # whole-field (effort-confounded)
-C_KIND = "#1b9e77"      # effort-matched + position-confident reports — the headline
-INK = "#0b0b0b"
-INK2 = "#52514e"
-GRIDC = "#e6e5e1"
-SURF = "#fcfcfb"
+from _chartstyle import (C_RAW, C_FAIR, C_KIND, INK, INK2, GRIDC, SURF,  # noqa: E402
+                         RC, brand_footer)
+from reindeer.model import cv as CV  # noqa: E402
 
 
 def gain_curve(pct, qs):
@@ -93,29 +89,32 @@ def main() -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    plt.rcParams.update({"font.size": 11, "axes.edgecolor": INK2,
-                         "text.color": INK, "axes.labelcolor": INK,
-                         "xtick.color": INK2, "ytick.color": INK2})
-    fig = plt.figure(figsize=(13.5, 6.2), facecolor=SURF)
+    plt.rcParams.update(RC)
+    st = CV.repeated_kfold_stats(p_kind, k=5)
+    fig = plt.figure(figsize=(13.5, 6.6), facecolor=SURF)
     gs = fig.add_gridspec(1, 2, width_ratios=[1.15, 1.0])
     axA = fig.add_subplot(gs[0, 0]); axA.set_facecolor(SURF)
     axB = fig.add_subplot(gs[0, 1]); axB.set_facecolor(SURF)
-    fig.subplots_adjust(left=0.065, right=0.985, top=0.78, bottom=0.20, wspace=0.24)
+    fig.subplots_adjust(left=0.065, right=0.985, top=0.775, bottom=0.235, wspace=0.24)
 
-    fig.text(0.065, 0.955, "Reindeer scorer — held-out hit-rate analysis",
+    fig.text(0.065, 0.958, "Reindeer scorer — held-out hit-rate analysis",
              fontsize=17, fontweight="bold", ha="left", color=INK)
-    fig.text(0.065, 0.905,
-             f"{n} held-out sightings · date-matched · 2.5 km zone.  “Effort-matched” "
-             "reweights the background to where reports actually\noccur (IDEA 009); "
-             "“confident positions” further drops name-only landmark placements that "
-             "locate the feature, not the herd.",
+    fig.text(0.065, 0.912,
+             f"{n} held-out field reports · each scored inside its own day's real weather "
+             "field · 2.5 km zone.  “Effort-matched” reweights the background to where "
+             "reports actually\noccur; “confident positions” further drops name-only "
+             "landmark placements that locate the feature, not the herd. Model weights "
+             "were never fitted to these reports.",
              fontsize=10, ha="left", va="top", color=INK2, linespacing=1.4)
-    fig.text(0.065, 0.085,
+    fig.text(0.065, 0.125,
              "Read: whole-field hugs the chance diagonal (effort confound); correcting for "
              "reporting bias and for reporter position error lifts the\ncurve well above "
              f"chance — the scorer does narrow the search where the reports can be trusted. "
-             f"Small sample (n={n}; {int(conf.sum())} confident).",
+             f"Small sample (n={n}; {int(conf.sum())} confident).\nCross-validated gate: "
+             f"CV AUC {st['mean']:.3f} ± {st['std']:.3f}, "
+             f"{st['fold_beats_chance']*100:.0f}% of folds beat chance.",
              fontsize=9, ha="left", va="top", color=INK2, linespacing=1.4)
+    brand_footer(fig)
 
     # --- Panel A: cumulative gain curve ------------------------------------------
     qs = np.linspace(0, 1, 101)

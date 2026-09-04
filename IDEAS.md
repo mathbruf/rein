@@ -1,7 +1,7 @@
 # Ideas Backlog
 
 Statuses: proposed | accepted | done | rejected
-Agents add ideas here as `proposed`; the human promotes them to ROADMAP.
+Agents add ideas here as `proposed`; the human promotes them to the roadmap.
 
 | ID | Date | Status | Idea | Rationale | By |
 |----|------|--------|------|-----------|----|
@@ -50,7 +50,7 @@ Findings from a full read of `model/score.py` + `docs/validation_report.md`. The
 Phase 6 closes with the model **above chance under the honest gate** (CV AUC 0.641,
 88% of folds, n=30 position-confident) on real per-cell weather, a readable map, a
 gathered `output/` tree, a full analysis folder, and an expansion plan
-([`docs/expansion_plan.md`](docs/expansion_plan.md)) with the area-config seam
+(`docs/expansion_plan.md`) with the area-config seam
 implemented. The next steps, in recommended order:
 
 1. **Grow the trusted validation set** — the single biggest lever. Pin the 5

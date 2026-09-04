@@ -42,22 +42,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 # fixed identity across all analysis charts (validated palette; never re-ordered)
-C_RAW = "#eb6834"    # whole-field / insect drive
-C_FAIR = "#2a78d6"   # effort-matched / shelter drive
-C_KIND = "#1b9e77"   # position-confident tier
-INK, INK2, GRIDC, SURF = "#0b0b0b", "#52514e", "#e6e5e1", "#fcfcfb"
+from _chartstyle import (C_RAW, C_FAIR, C_KIND, INK, INK2, GRIDC,  # noqa: E402
+                         RC, brand_footer, despine as _despine)
 
-plt.rcParams.update({"font.size": 11, "axes.edgecolor": INK2, "text.color": INK,
-                     "axes.labelcolor": INK, "xtick.color": INK2,
-                     "ytick.color": INK2, "figure.facecolor": SURF,
-                     "axes.facecolor": SURF, "savefig.facecolor": SURF})
-
-
-def _despine(ax):
-    for s in ("top", "right"):
-        ax.spines[s].set_visible(False)
-    ax.grid(True, axis="y", color=GRIDC, lw=0.8)
-    ax.set_axisbelow(True)
+plt.rcParams.update(RC)
 
 
 def load_everything():
@@ -79,21 +67,27 @@ def load_everything():
 
 
 def chart_validation_breakdown(u, out: Path):
-    """AUC by positioning method + by season. One magnitude -> one hue."""
+    """AUC by positioning method + by season + every single report. One magnitude -> one hue."""
     conf = u["method"].map(VAL.position_confident)
     by_m = (u.groupby("method")["p"].agg(["count", "mean"])
              .sort_values("mean", ascending=True))
     by_y = u.assign(year=u["date"].str[:4]).groupby("year")["p"].agg(["count", "mean"])
+    n_dates = u["date"].nunique()
+    span = f"{u['date'].min()} → {u['date'].max()}"
 
-    fig, (axA, axB) = plt.subplots(1, 2, figsize=(13.0, 5.4),
-                                   gridspec_kw={"width_ratios": [1.25, 1.0]})
-    fig.subplots_adjust(left=0.17, right=0.97, top=0.80, bottom=0.14, wspace=0.30)
-    fig.text(0.055, 0.95, "Where the hit-rate comes from — and what deflates it",
+    fig, (axA, axB, axC) = plt.subplots(
+        1, 3, figsize=(15.5, 5.6),
+        gridspec_kw={"width_ratios": [1.3, 0.85, 1.0]})
+    fig.subplots_adjust(left=0.145, right=0.975, top=0.70, bottom=0.20, wspace=0.34)
+    fig.text(0.048, 0.95, "Where the hit-rate comes from — and what deflates it",
              fontsize=15, fontweight="bold")
-    fig.text(0.055, 0.885,
-             "Per-report ranking score (0.5 = chance) under the effort-matched "
-             "background, split by how each report's position was located.",
-             fontsize=9.5, color=INK2)
+    fig.text(0.048, 0.885,
+             f"Per-report ranking score (0.5 = chance) for {len(u)} independent field "
+             f"reports on {n_dates} days ({span}), each scored inside its own day's real "
+             "weather field under the effort-matched background,\nsplit by how the "
+             "report's position was located. Reports are validation only — the model "
+             "never sees them when it draws the map.",
+             fontsize=9.5, color=INK2, va="top", linespacing=1.5)
 
     # Panel A: by positioning method (horizontal bars, value + n labels)
     names = {"offset-pinned": "human-pinned area\n(“nord for X”)",
@@ -136,13 +130,42 @@ def chart_validation_breakdown(u, out: Path):
     axB.set_title("By season — small yearly samples;\nthe verdict needs the pooled CV",
                   fontsize=10, color=INK2, loc="left", pad=8)
 
+    # Panel C: every report as one dot — nothing aggregated away
     n_conf = int(conf.sum())
+    rng = np.random.default_rng(7)  # fixed jitter: chart is reproducible
+    for tier, mask, col, lab in (("conf", conf, C_KIND, None),
+                                 ("vague", ~conf, INK2, None)):
+        pv = u.loc[mask, "p"].to_numpy()
+        jit = rng.uniform(-0.16, 0.16, pv.size)
+        axC.scatter(pv, (1 if tier == "conf" else 0) + jit, s=42, color=col,
+                    alpha=0.85, edgecolors="white", linewidths=0.8, zorder=3)
+        axC.text(0.02, (1 if tier == "conf" else 0) + 0.30,
+                 (f"position-confident (n={n_conf})" if tier == "conf"
+                  else f"vague tier — name-only geocode (n={len(u) - n_conf})"),
+                 fontsize=9, color=(C_KIND if tier == "conf" else INK2),
+                 fontweight="bold")
+        axC.plot([pv.mean()] * 2, [(1 if tier == "conf" else 0) - 0.22,
+                                   (1 if tier == "conf" else 0) + 0.22],
+                 color=col, lw=2.4, zorder=4)
+    axC.axvline(0.5, ls="--", lw=1.4, color=INK2, zorder=2)
+    axC.set_xlim(0, 1.0)
+    axC.set_ylim(-0.55, 1.55)
+    axC.set_yticks([])
+    axC.set_xlabel("ranking score (0.5 = chance; tick = tier mean)")
+    for s in ("top", "right", "left"):
+        axC.spines[s].set_visible(False)
+    axC.grid(True, axis="x", color=GRIDC, lw=0.8)
+    axC.set_axisbelow(True)
+    axC.set_title("Every report, no averaging — the honest\nspread behind the headline number",
+                  fontsize=10, color=INK2, loc="left", pad=8)
+
     st = CV.repeated_kfold_stats(u.loc[conf, "p"].to_numpy(), k=5)
-    fig.text(0.055, 0.02,
+    fig.text(0.048, 0.085,
              f"Position-confident tier: n={n_conf}, CV AUC {st['mean']:.3f} ± "
              f"{st['std']:.3f}, {st['fold_beats_chance']*100:.0f}% of CV folds beat "
              "chance. Weights were never fitted to these reports.",
              fontsize=9, color=INK2)
+    brand_footer(fig)
     fig.savefig(out, dpi=150)
     plt.close(fig)
 
@@ -163,31 +186,39 @@ def chart_weather_drivers(grid, fields, out: Path):
         p_shl = float(S._shelter_p(np.nanpercentile(wf.temp_c, S.DAY_COLD_PCTL),
                                    np.nanpercentile(eff, S.DAY_WINDY_PCTL),
                                    np.nanmean(wf.precip_mm)))
-        rows.append((d, p_ins, p_shl))
+        rows.append((d, p_ins, p_shl, float(np.nanmedian(wf.temp_c)),
+                     float(np.nanmedian(wf.wind_ms)), float(np.nanmean(wf.precip_mm))))
     dates = [r[0][5:] for r in rows]          # MM-DD, year shown in group label
     years = [r[0][:4] for r in rows]
     ins = np.array([r[1] for r in rows])
     shl = np.array([r[2] for r in rows])
+    tmed = np.array([r[3] for r in rows])
+    wmed = np.array([r[4] for r in rows])
+    pmm = np.array([r[5] for r in rows])
 
-    fig, ax = plt.subplots(figsize=(13.0, 4.8))
-    fig.subplots_adjust(left=0.06, right=0.98, top=0.76, bottom=0.24)
-    fig.text(0.055, 0.94, "What the model saw — behavioural drivers across the autumn window",
+    fig, (ax, axT, axW, axP) = plt.subplots(
+        4, 1, figsize=(15.5, 8.6), sharex=True,
+        gridspec_kw={"height_ratios": [2.5, 0.8, 0.8, 0.8], "hspace": 0.14})
+    fig.subplots_adjust(left=0.055, right=0.985, top=0.83, bottom=0.135)
+    fig.text(0.048, 0.955, "What the model saw — behavioural drivers across the autumn window",
              fontsize=15, fontweight="bold")
-    fig.text(0.055, 0.88,
-             "Day-level regime pressures from the real weather field on each validation date.\n"
+    fig.text(0.048, 0.915,
+             "Day-level regime pressures computed from the real per-cell weather field "
+             "(Open-Meteo lattice interpolated to every 250 m cell) on each "
+             "validation date — with the day's actual field-median weather below.\n"
              "Shelter (cold/wet/wind) dominates the Aug–Sept season; the insect drive is almost "
-             "always off — exactly what the field expert said.",
+             "always off — exactly what the local field expert predicted from experience.",
              fontsize=9.5, color=INK2, va="top", linespacing=1.5)
     x = np.arange(len(rows))
     ax.bar(x - 0.21, shl, width=0.4, color=C_FAIR, label="shelter drive", zorder=2)
     ax.bar(x + 0.21, ins, width=0.4, color=C_RAW, label="insect drive", zorder=2)
-    ax.set_xticks(x, dates, rotation=60, fontsize=7.5)
     # year separators + group labels
     prev = 0
     for i in range(1, len(years) + 1):
         if i == len(years) or years[i] != years[prev]:
             if i < len(years):
-                ax.axvline(i - 0.5, color=GRIDC, lw=1.2)
+                for a in (ax, axT, axW, axP):
+                    a.axvline(i - 0.5, color=GRIDC, lw=1.2)
             ax.text((prev + i - 1) / 2, 1.06, years[prev], ha="center",
                     fontsize=10, fontweight="bold", color=INK2)
             prev = i
@@ -195,48 +226,74 @@ def chart_weather_drivers(grid, fields, out: Path):
     ax.set_ylabel("drive strength (0–1)")
     _despine(ax)
     ax.legend(frameon=False, fontsize=9.5, loc="upper left")
+
+    # the day's real weather (field medians) — the inputs behind the drives above
+    def _strip(a, vals, ylab, fmt):
+        a.plot(x, vals, lw=1.8, color=INK, marker="o", ms=3.4, zorder=3)
+        a.set_ylabel(ylab, fontsize=8.5)
+        lo, hi = float(np.min(vals)), float(np.max(vals))
+        for xi in (int(np.argmin(vals)), int(np.argmax(vals))):
+            a.annotate(fmt.format(vals[xi]), (xi, vals[xi]), fontsize=7.5,
+                       color=INK2, xytext=(0, 5), textcoords="offset points",
+                       ha="center")
+        a.set_ylim(lo - (hi - lo) * 0.25, hi + (hi - lo) * 0.35)
+        _despine(a)
+    _strip(axT, tmed, "temp °C\n(median)", "{:.0f}°")
+    _strip(axW, wmed, "wind m/s\n(median)", "{:.0f}")
+    axP.bar(x, pmm, width=0.55, color=INK2, zorder=2)
+    axP.set_ylabel("precip mm\n(day sum)", fontsize=8.5)
+    _despine(axP)
+    axP.set_xticks(x)
+    axP.set_xticklabels(dates, rotation=60, fontsize=7.5)
+
+    brand_footer(fig)
     fig.savefig(out, dpi=150)
     plt.close(fig)
 
 
 def chart_model_explainer(out: Path):
-    """How the scorer works — a reading diagram, not a data chart."""
+    """How the whole project works — a reading diagram, not a data chart.
+
+    This is the public one-image summary: pipeline + weights, PLUS the research
+    question, the data sources/credits and the honest limits, so a GitHub
+    visitor understands the project from this figure alone.
+    """
     import reindeer.model.score as S
-    fig = plt.figure(figsize=(13.0, 7.6))
+    fig = plt.figure(figsize=(13.0, 9.0))
     ax = fig.add_axes([0, 0, 1, 1])
     ax.axis("off")
 
     def box(x, y, w, h, title, lines, fc="#f1f0ec", ec=INK2, title_c=INK):
         ax.add_patch(plt.Rectangle((x, y), w, h, facecolor=fc, edgecolor=ec,
                                    lw=1.2, zorder=1))
-        ax.text(x + 0.012, y + h - 0.028, title, fontsize=10.5, fontweight="bold",
+        ax.text(x + 0.012, y + h - 0.024, title, fontsize=10.5, fontweight="bold",
                 color=title_c, va="top")
-        ax.text(x + 0.012, y + h - 0.075, "\n".join(lines), fontsize=8.4,
+        ax.text(x + 0.012, y + h - 0.062, "\n".join(lines), fontsize=8.4,
                 color=INK, va="top", linespacing=1.45)
 
     def arrow(x0, y0, x1, y1):
         ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
                     arrowprops=dict(arrowstyle="-|>", color=INK2, lw=1.6))
 
-    ax.text(0.04, 0.955, "How the model works — from tomorrow's weather to a map",
+    ax.text(0.04, 0.965, "How the model works — from tomorrow's weather to a map",
             fontsize=16, fontweight="bold")
-    ax.text(0.04, 0.915, f"Area: {AREA.name} ({AREA.region}) · 250 m grid · "
+    ax.text(0.04, 0.932, f"Area: {AREA.name} ({AREA.region}) · 250 m grid · "
             "rule-based & expert-tuned — sightings are NEVER an input, only the "
             "measuring stick.", fontsize=9.5, color=INK2)
 
-    box(0.04, 0.60, 0.27, 0.27, "STATIC LANDSCAPE  (built once)", [
+    box(0.04, 0.67, 0.27, 0.225, "STATIC LANDSCAPE  (built once)", [
         "• Elevation, slope, aspect, TPI — 50 m national DTM",
         "• Forage value — AR50 land cover per cell",
         "• Distance to people — roads, trails,",
         "   cabins, parking (OSM + fjellstyre)",
         "• Field boundary — statsallmenning polygons"])
-    box(0.04, 0.28, 0.27, 0.27, "REAL WEATHER FIELD  (daily)", [
+    box(0.04, 0.42, 0.27, 0.225, "REAL WEATHER FIELD  (daily)", [
         "• Lattice of real forecast points (1 km model;",
         "   ERA5 for past dates), no API key",
         "• Temperature, wind speed + DIRECTION, rain",
         "• Interpolated per cell: wind as u/v vectors,",
         "   temp by data-driven lapse (inversions incl.)"])
-    box(0.37, 0.44, 0.28, 0.36, "SCORING  (per cell, per day)", [
+    box(0.37, 0.56, 0.28, 0.335, "SCORING  (per cell, per day)", [
         f"insect drive (warm+calm+dry)   w={S.W_INSECT}",
         f"shelter drive (cold|wet|windy) w={S.W_SHELTER}",
         "→ a weighted SWITCH, not a sum — the",
@@ -248,24 +305,55 @@ def chart_model_explainer(out: Path):
         f"disturbance penalty            w={S.W_DISTURB}",
         "(all weights expert-set with the field expert,",
         " never fitted to sightings)"])
-    box(0.71, 0.44, 0.25, 0.36, "OUTPUT  (what you read)", [
+    box(0.71, 0.56, 0.25, 0.335, "OUTPUT  (what you read)", [
         "• 0–1 score per cell → percentile-",
         "   ranked green wash on hillshade",
         "• Up to 6 named “go here” zones",
         "   with plain-language reasons",
         "• Wind arrow + roads/trails/cabins",
         "   for orientation on the ground",
-        "• output/forecast/<date>.png"])
-    box(0.37, 0.06, 0.59, 0.30, "VALIDATION  (the honesty loop — separate from scoring)", [
+        "• One image per day, read at a desk",
+        "   and tested against field reports"])
+    box(0.37, 0.315, 0.59, 0.215, "VALIDATION  (the honesty loop — separate from scoring)", [
         "Field reports → gazetteer + human pins → each report scored within its day's field.",
         "Fairness corrections: effort-matched background (reports come from accessible ground),",
         "position-confidence tiers (name-only geocodes measure the reporter, not the model).",
         "Gate: k-fold cross-validated, select-then-evaluate — a change is kept ONLY if it",
         "wins out-of-sample. Current: CV AUC 0.64, ~9 of 10 folds beat chance (n=30 confident)."])
-    arrow(0.31, 0.735, 0.37, 0.66)
-    arrow(0.31, 0.415, 0.37, 0.52)
-    arrow(0.65, 0.62, 0.71, 0.62)
-    arrow(0.51, 0.44, 0.51, 0.36)
+
+    # ---- the project, in three boxes a first-time visitor actually needs ----
+    box(0.04, 0.08, 0.295, 0.225, "THE RESEARCH QUESTION", [
+        "What makes wild reindeer move, day to day —",
+        "and which pressures matter most in an",
+        "animal's daily life? A behavioural theory",
+        "(weather, insects, forage, terrain, human",
+        "disturbance) is encoded as rules and tested",
+        "against independent observations.",
+        "Not a tracking tool: an honest probability",
+        "surface, never used to approach animals."])
+    box(0.355, 0.08, 0.325, 0.225, "DATA SOURCES & CREDITS", [
+        "• Weather: Open-Meteo — MET Nordic 1 km +",
+        "   ERA5 reanalysis (CC-BY 4.0, MET/Copernicus)",
+        "• Terrain: Kartverket national 50 m DTM",
+        "• Place names: Kartverket SSR register",
+        "• Land cover: NIBIO AR50",
+        "• Infrastructure: OpenStreetMap + Lesja fjellstyre",
+        "• Field reports: villreinutvalet.no (thank you!)"])
+    box(0.70, 0.08, 0.26, 0.225, "HONEST LIMITS", [
+        "• Small sample — a few dozen",
+        "   trustworthy reports so far",
+        "• Reports are presence-only and",
+        "   effort-biased (corrected in eval)",
+        "• Positions are ~2.5 km areas,",
+        "   never GPS points",
+        "• Reindeer are social + partly",
+        "   stochastic — claims stay modest"])
+
+    arrow(0.31, 0.78, 0.37, 0.73)
+    arrow(0.31, 0.53, 0.37, 0.62)
+    arrow(0.65, 0.72, 0.71, 0.72)
+    arrow(0.51, 0.56, 0.51, 0.53)
+    brand_footer(fig)
     fig.savefig(out, dpi=150)
     plt.close(fig)
 
@@ -286,6 +374,11 @@ def write_readme(u, out: Path):
 
 _Regenerated by `scripts/build_analysis.py` + `scripts/hit_analysis.py`.
 All numbers are computed fresh from the current model and data on every run._
+
+_These charts are the **published face** of the project: the underlying data
+(field reports, positions, gazetteer, boundary geometry) is deliberately not
+distributed — only aggregate chart form. See `docs/ABOUT.md` for how the
+project should be viewed._
 
 ## How the model works (one paragraph)
 
@@ -326,9 +419,9 @@ with the field expert — **sightings are never an input**; they are kept exclus
 | File | What it shows |
 |---|---|
 | `hit_analysis.png` | The headline: cumulative gain + hit-% at each threshold, under all three measurement views (whole-field / effort-matched / position-confident). |
-| `validation_breakdown.png` | Where the hit-rate comes from: score by positioning method (trustworthy positions score ~0.7–0.8; name-only geocodes drag the average) and by season. |
-| `weather_drivers.png` | What the model saw on each validation day — shelter dominates the autumn observation window; insects are almost always off. |
-| `model_explainer.png` | The full pipeline diagram: landscape + real weather → scoring terms and weights → map, plus the validation loop. |
+| `validation_breakdown.png` | Where the hit-rate comes from: score by positioning method (trustworthy positions score ~0.7–0.8; name-only geocodes drag the average), by season, and every single report as a dot. |
+| `weather_drivers.png` | What the model saw on each validation day — the regime pressures plus the day's actual field-median temperature, wind and precipitation. |
+| `model_explainer.png` | The one-image project summary: pipeline + weights, the research question, data credits and the honest limits. |
 
 ## Honest limits (always state these)
 
@@ -338,6 +431,17 @@ with the field expert — **sightings are never an input**; they are kept exclus
 - Positions are areas (~2.5 km), never GPS points; 5 vague reports await human pins.
 - The map is a **search-narrowing tool, not a GPS oracle** — reindeer are social
   and partly stochastic; the model narrows where the animals are likely to be, nothing more.
+
+## Data sources & credits
+
+- **Weather:** [Open-Meteo](https://open-meteo.com/) — MET Nordic 1 km forecasts +
+  ERA5 reanalysis (CC-BY 4.0; MET Norway / Copernicus).
+- **Terrain:** Kartverket national 50 m DTM (høydedata.no).
+- **Place names:** Kartverket Sentralt stadnamnregister (SSR).
+- **Land cover:** NIBIO AR50.
+- **Infrastructure:** OpenStreetMap contributors + Lesja fjellstyre.
+- **Field reports:** villreinutvalet.no — used **only** to validate, never to
+  generate the map; raw reports and positions are not redistributed.
 """
     out.write_text(text, encoding="utf-8")
 
